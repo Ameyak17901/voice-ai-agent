@@ -1,5 +1,5 @@
 # Core Vocode SDK (Editable local dependency)
--e ../vocode-core
+-e ./vocode-core
 
 # Web Server & Framework
 fastapi>=0.111.0,<0.112.0
