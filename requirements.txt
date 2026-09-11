@@ -1,0 +1,32 @@
+# Core Vocode SDK (Editable local dependency)
+-e ../vocode-core
+
+# Web Server & Framework
+fastapi>=0.111.0,<0.112.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.2
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.0
+websockets>=14.0
+
+# Audio Processing & C-Extensions
+numpy==1.26.4
+miniaudio>=1.59.0
+sounddevice>=0.4.7
+pydub>=0.25.1
+
+# Speech-to-Text & Text-to-Speech Providers
+deepgram-sdk>=7.8.0
+cartesia>=4.2.0
+elevenlabs>=1.2.2
+edge-tts>=7.2.8
+azure-cognitiveservices-speech>=1.38.0
+pyht>=0.0.28
+
+# LLM Providers & Agent Utilities
+openai>=1.30.5
+anthropic>=0.28.0
+tiktoken>=0.7.0
+nltk>=3.8.1
+janus>=1.0.0
+loguru>=0.7.2
