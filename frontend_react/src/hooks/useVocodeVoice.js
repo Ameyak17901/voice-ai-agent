@@ -32,6 +32,7 @@ export function useVocodeVoice() {
 
   // Track chunk telemetry
   const chunkCountRef = useRef(0);
+  const currentPersonaRef = useRef('concierge');
 
   // Barge-in / interrupt playback
   const interruptPlayback = useCallback(() => {
@@ -260,6 +261,7 @@ export function useVocodeVoice() {
   // Start Voice Session
   const startSession = useCallback(async (personaOverride) => {
     try {
+      currentPersonaRef.current = personaOverride || 'concierge';
       setIsConnecting(true);
       chunkCountRef.current = 0;
 
@@ -414,6 +416,7 @@ export function useVocodeVoice() {
                   {
                     id: Date.now() + Math.random(),
                     sender: msg.sender,
+                    persona: currentPersonaRef.current,
                     text: msg.text,
                     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                   }

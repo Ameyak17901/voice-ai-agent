@@ -6,7 +6,6 @@ import Controls from './components/Controls';
 import QuickPrompts from './components/QuickPrompts';
 import TranscriptFeed from './components/TranscriptFeed';
 import DiagnosticsCard from './components/DiagnosticsCard';
-import SettingsModal from './components/SettingsModal';
 import AgentBuilderModal from './components/AgentBuilderModal';
 import { useVocodeVoice } from './hooks/useVocodeVoice';
 
@@ -29,10 +28,8 @@ export default function App() {
 
   const [persona, setPersona] = useState('concierge');
   const [personas, setPersonas] = useState([]);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAgentBuilderOpen, setIsAgentBuilderOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(null);
-  const [appointmentsCount, setAppointmentsCount] = useState(0);
 
   // Fetch backend status
   const fetchStatus = async () => {
@@ -42,12 +39,6 @@ export default function App() {
         const data = await res.json();
         setSystemStatus(data);
         if (data.current_persona) setPersona(data.current_persona);
-      }
-
-      const apptRes = await fetch('/api/appointments');
-      if (apptRes.ok) {
-        const apptData = await apptRes.json();
-        setAppointmentsCount(apptData.appointments?.length || 0);
       }
     } catch (e) {
       console.error('Failed to fetch status:', e);
@@ -112,22 +103,7 @@ export default function App() {
     }
   };
 
-  const handleSaveSettings = async (payload) => {
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        alert('Settings saved successfully!');
-        setIsSettingsOpen(false);
-        fetchStatus();
-      }
-    } catch (err) {
-      alert('Failed to save settings: ' + err.message);
-    }
-  };
+  const activePersona = personas.find((p) => p.id === persona);
 
   const handleToggleSession = () => {
     if (isConnected) {
@@ -148,7 +124,6 @@ export default function App() {
         isConnecting={isConnecting}
         isSpeaking={isSpeaking}
         isHearingUser={Boolean(interimTranscript)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <main className="main-layout">
@@ -192,21 +167,17 @@ export default function App() {
             interimTranscript={interimTranscript}
             onClear={clearTranscripts}
             onSendMessage={sendManualMessage}
+            activePersona={activePersona}
+            personaName={activePersona?.name}
+            personas={personas}
           />
 
           <DiagnosticsCard
             systemStatus={systemStatus}
-            appointmentsCount={appointmentsCount}
+            activePersona={activePersona}
           />
         </aside>
       </main>
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onSave={handleSaveSettings}
-        currentTts={systemStatus?.tts_provider}
-      />
 
       <AgentBuilderModal
         isOpen={isAgentBuilderOpen}

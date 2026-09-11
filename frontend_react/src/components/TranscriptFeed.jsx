@@ -1,8 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function TranscriptFeed({ transcripts, interimTranscript, onClear, onSendMessage }) {
+export default function TranscriptFeed({
+  transcripts,
+  interimTranscript,
+  onClear,
+  onSendMessage,
+  personaName,
+  activePersona,
+  personas = [],
+}) {
   const [inputText, setInputText] = useState('');
   const feedEndRef = useRef(null);
+
+  const personasMap = React.useMemo(() => {
+    const map = {};
+    for (const p of personas) {
+      if (p?.id) map[p.id] = p;
+    }
+    return map;
+  }, [personas]);
+
+  const defaultAgentLabel = activePersona?.name || personaName || 'AI Copilot';
 
   useEffect(() => {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -29,18 +47,22 @@ export default function TranscriptFeed({ transcripts, interimTranscript, onClear
           <div className="transcript-empty-state">
             <div className="empty-icon">🎙️</div>
             <p>Start a session and speak naturally.</p>
-            <small>Your voice audio and the copilot's spoken responses will stream here in real-time.</small>
+            <small>
+              Your voice audio and {activePersona?.name ? `${activePersona.name}'s` : "the agent's"} spoken responses will stream here in real-time.
+            </small>
           </div>
         ) : (
           transcripts.map((item) => {
             const isUser = item.sender === 'human' || item.sender === 'user';
+            const itemPersona = item.persona ? personasMap[item.persona] : null;
+            const botLabel = item.agentName || (itemPersona ? itemPersona.name : defaultAgentLabel);
             return (
               <div
                 key={item.id}
                 className={`chat-bubble ${isUser ? 'bubble-user' : 'bubble-agent'}`}
               >
                 <div className="bubble-meta">
-                  <strong>{isUser ? 'You' : 'Nova Copilot'}</strong>
+                  <strong>{isUser ? 'You' : botLabel}</strong>
                   <span>• {item.timestamp}</span>
                 </div>
                 <div className="bubble-content">{item.text}</div>

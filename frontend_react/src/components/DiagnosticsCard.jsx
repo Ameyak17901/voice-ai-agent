@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function DiagnosticsCard({ systemStatus, appointmentsCount }) {
+export default function DiagnosticsCard({ systemStatus, activePersona }) {
   const hasStt = systemStatus?.has_stt_creds;
   const hasLlm = systemStatus?.has_llm_creds;
   const ttsProvider = systemStatus?.tts_provider || 'stream_elements';
@@ -23,7 +23,7 @@ export default function DiagnosticsCard({ systemStatus, appointmentsCount }) {
         <div className="diag-item">
           <span className="diag-title">LLM Intelligence</span>
           <span className={`diag-badge ${hasLlm ? 'badge-success' : 'badge-warning'}`}>
-            {hasLlm ? 'OpenAI GPT-4o-mini' : 'Built-in Copilot'}
+            {hasLlm ? 'Gemini 3.5 Flash Lite' : 'Built-in Copilot'}
           </span>
         </div>
 
@@ -35,8 +35,14 @@ export default function DiagnosticsCard({ systemStatus, appointmentsCount }) {
         </div>
 
         <div className="diag-item">
-          <span className="diag-title">Appointments Booked</span>
-          <span className="diag-value">{appointmentsCount}</span>
+          <span className="diag-title">Active Persona</span>
+          <span
+            className="diag-badge badge-success"
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={activePersona?.name || 'Nova Copilot'}
+          >
+            {activePersona?.name || 'Nova Copilot'}
+          </span>
         </div>
       </div>
     </div>
