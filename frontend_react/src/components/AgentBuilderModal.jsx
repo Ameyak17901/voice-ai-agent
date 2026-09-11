@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { API_BASE_URL } from '../config';
 
 const EMOJI_OPTIONS = ['🤖', '🏥', '🦷', '🏡', '⚖️', '🚗', '✈️', '💻', '🩺', '🎓', '🏋️', '🛍️', '✨', '📞', '🎙️'];
 
@@ -59,7 +58,7 @@ export default function AgentBuilderModal({ isOpen, onClose, onAgentCreated }) {
   // Fetch available voices on open
   useEffect(() => {
     if (isOpen) {
-      fetch(`${API_BASE_URL}/api/voices`)
+      fetch('/api/voices')
         .then(res => res.json())
         .then(data => {
           setVoices(data);
@@ -146,7 +145,7 @@ export default function AgentBuilderModal({ isOpen, onClose, onAgentCreated }) {
         is_custom: true,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/personas`, {
+      const res = await fetch('/api/personas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
