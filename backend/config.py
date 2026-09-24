@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None
-    openai_model_name: str = "gemini-3.5-flash-lite"
+    openai_model_name: str = "gemini-3.5-flash"
 
     # TTS Settings: eleven_labs (Studio Quality Streaming Voice), cartesia, stream_elements, azure
     tts_provider: str = "eleven_labs"

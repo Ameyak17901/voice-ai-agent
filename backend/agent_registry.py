@@ -41,7 +41,7 @@ class VoicePersona(BaseModel):
     initial_message: str = Field(..., description="Spoken greeting when call starts")
     voice_id: str = Field(default="cgSgspJ2msm6clMCkdW9", description="ElevenLabs voice ID")
     voice_name: Optional[str] = Field(default="Jessica", description="Readable voice name")
-    model_name: str = Field(default="gemini-3.5-flash-lite", description="LLM model identifier")
+    model_name: str = Field(default="gemini-3.5-flash", description="LLM model identifier")
     temperature: float = Field(default=0.7, ge=0.0, le=1.5)
     idle_nudge_timeout: float = Field(default=12.0, ge=4.0, le=60.0)
     idle_messages: List[str] = Field(
@@ -73,7 +73,7 @@ BUILTIN_PERSONAS: Dict[str, VoicePersona] = {
         initial_message="Hello! I'm Nova, your real-time voice copilot. How can I assist you today?",
         voice_id="cgSgspJ2msm6clMCkdW9",
         voice_name="Jessica",
-        model_name="gemini-3.5-flash-lite",
+        model_name="gemini-3.5-flash",
         temperature=0.7,
         idle_nudge_timeout=12.0,
         idle_messages=[
@@ -97,7 +97,7 @@ BUILTIN_PERSONAS: Dict[str, VoicePersona] = {
         initial_message="Hello! I'm Chloe, your voice receptionist. How can I help you today?",
         voice_id="EXAVITQu4vr4xnSDxMaL",
         voice_name="Sarah",
-        model_name="gemini-3.5-flash-lite",
+        model_name="gemini-3.5-flash",
         temperature=0.7,
         idle_nudge_timeout=12.0,
         idle_messages=[
@@ -120,7 +120,7 @@ BUILTIN_PERSONAS: Dict[str, VoicePersona] = {
         initial_message="Hello! I'm Alex, your engineering interviewer assistant. How can I help you today?",
         voice_id="cjVigY5qzO86Huf0OWal",
         voice_name="Eric",
-        model_name="gemini-3.5-flash-lite",
+        model_name="gemini-3.5-flash",
         temperature=0.6,
         idle_nudge_timeout=14.0,
         idle_messages=[
@@ -144,7 +144,7 @@ BUILTIN_PERSONAS: Dict[str, VoicePersona] = {
         initial_message="Hello! I'm the school receptionist. How can I help you today?",
         voice_id="XrExE9yKIg1WjnnlVkGX",
         voice_name="Matilda",
-        model_name="gemini-3.5-flash-lite",
+        model_name="gemini-3.5-flash",
         temperature=0.7,
         idle_nudge_timeout=12.0,
         idle_messages=[

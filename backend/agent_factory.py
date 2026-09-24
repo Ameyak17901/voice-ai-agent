@@ -272,9 +272,8 @@ class ResilientChatGPTAgent(ChatGPTAgent):
         except Exception as exc:
             logger.error(
                 f"[VOICE_PIPELINE: LLM_ERROR] ResilientChatGPTAgent primary LLM call failed ({type(exc).__name__}: {exc}). "
-                f"Engaging SmartFallbackAgent failover for persona '{self.fallback_agent.persona}' so user receives immediate voice response."
+                f"Engaging SmartFallbackAgent failover for persona '{self.fallback_agent.persona}' for this turn."
             )
-            self.fallback_active = True
             async for resp in self.fallback_agent.generate_response(
                 human_input, conversation_id, is_interrupt, bot_was_in_medias_res
             ):
@@ -299,10 +298,10 @@ def create_agent(persona_key: Optional[str] = None) -> BaseAgent:
     # 1. Check for dedicated Gemini API key (Free Tier: 1,500 requests/day, fast sub-200ms TTFT)
     gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        model_name = settings.openai_model_name or "gemini-3.5-flash-lite"
+        model_name = settings.openai_model_name or "gemini-3.5-flash"
         # Auto-upgrade deprecated Google Gemini model endpoints
         if any(deprecated in model_name for deprecated in ["gemini-1.5", "gemini-2.0", "gemini-2.5", "gemini-1.0"]):
-            model_name = "gemini-3.5-flash-lite"
+            model_name = "gemini-3.5-flash"
         logger.info(f"Initializing ResilientChatGPTAgent with Google {model_name} for persona '{persona}' (idle_nudge={allowed_idle}s)...")
         config = ChatGPTAgentConfig(
             initial_message=BaseMessage(text=initial_text),
