@@ -50,10 +50,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS for web clients
+# Enable CORS for web clients (Vercel frontend, local development)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -182,6 +182,12 @@ class BookAppointmentRequest(BaseModel):
     date: str
     time: str
     service: Optional[str] = "General Consultation"
+
+
+@app.get("/healthz")
+async def health_check() -> Dict[str, str]:
+    """Lightweight liveness probe for Render / Docker health checks."""
+    return {"status": "ok"}
 
 
 @app.get("/api/status")
