@@ -10,21 +10,23 @@ import uvicorn
 
 # Ensure project directories and vocode-core are in sys.path
 BASE_DIR = Path(__file__).resolve().parent
-REPO_ROOT = BASE_DIR.parent
-VOCODE_CORE = REPO_ROOT / "vocode-core"
+VOCODE_CORE = BASE_DIR / "vocode-core"
+if not VOCODE_CORE.exists():
+    VOCODE_CORE = BASE_DIR.parent / "vocode-core"
 
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
-if str(VOCODE_CORE) not in sys.path:
+if VOCODE_CORE.exists() and str(VOCODE_CORE) not in sys.path:
     sys.path.insert(0, str(VOCODE_CORE))
 
 from backend.config import settings
 
 if __name__ == "__main__":
     import argparse
+    default_port = int(os.getenv("PORT", str(settings.port)))
     parser = argparse.ArgumentParser(description="Run Vocode Web Voice Copilot Server")
     parser.add_argument("--host", default=settings.host, help="Host address to bind")
-    parser.add_argument("--port", type=int, default=settings.port, help="Port to bind")
+    parser.add_argument("--port", type=int, default=default_port, help="Port to bind")
     parser.add_argument("--reload", action="store_true", default=settings.debug, help="Enable auto-reload")
     parser.add_argument("--test", action="store_true", help="Perform smoke test and exit")
     args = parser.parse_args()

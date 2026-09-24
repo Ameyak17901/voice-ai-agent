@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: voice-ai-agent-backend
+    runtime: docker
+    dockerfilePath: Dockerfile
+    plan: starter
+    region: oregon
+    healthCheckPath: /healthz
+    disk:
+      name: agent-data
+      mountPath: /app/backend/data
+      sizeGB: 1
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: DEFAULT_PERSONA
+        value: "concierge"
+      - key: TTS_PROVIDER
+        value: "eleven_labs"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ELEVEN_LABS_API_KEY
+        sync: false

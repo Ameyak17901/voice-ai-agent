@@ -38,12 +38,20 @@ class Settings(BaseSettings):
     default_persona: str = "concierge"
     allowed_idle_time_seconds: float = 12.0
     num_check_human_present_times: int = 2
+    # Allowed CORS Origins (comma-separated or * for wildcard)
+    allowed_origins: str = "*"
 
     model_config = SettingsConfigDict(
-        env_file=".env.example",
+        env_file=(".env", ".env.local", ".env.example"),
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        if not self.allowed_origins or self.allowed_origins.strip() == "*":
+            return ["*"]
+        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
 
     @property
     def has_stt_creds(self) -> bool:

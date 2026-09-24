@@ -8,6 +8,7 @@ import TranscriptFeed from './components/TranscriptFeed';
 import DiagnosticsCard from './components/DiagnosticsCard';
 import AgentBuilderModal from './components/AgentBuilderModal';
 import { useVocodeVoice } from './hooks/useVocodeVoice';
+import { API_BASE_URL } from './config';
 
 export default function App() {
   const {
@@ -34,7 +35,7 @@ export default function App() {
   // Fetch backend status
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/status');
+      const res = await fetch(`${API_BASE_URL}/api/status`);
       if (res.ok) {
         const data = await res.json();
         setSystemStatus(data);
@@ -48,7 +49,7 @@ export default function App() {
   // Fetch all personas (built-in + custom from agent_registry.json)
   const fetchPersonas = async () => {
     try {
-      const res = await fetch('/api/personas');
+      const res = await fetch(`${API_BASE_URL}/api/personas`);
       if (res.ok) {
         const data = await res.json();
         setPersonas(data);
@@ -66,7 +67,7 @@ export default function App() {
   const handlePersonaChange = async (newPersona) => {
     setPersona(newPersona);
     try {
-      await fetch('/api/settings', {
+      await fetch(`${API_BASE_URL}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ default_persona: newPersona }),
@@ -89,7 +90,7 @@ export default function App() {
   const handleDeletePersona = async (personaId) => {
     if (!window.confirm('Are you sure you want to delete this custom agent?')) return;
     try {
-      const res = await fetch(`/api/personas/${personaId}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/api/personas/${personaId}`, { method: 'DELETE' });
       if (res.ok) {
         setPersona('concierge');
         fetchPersonas();
