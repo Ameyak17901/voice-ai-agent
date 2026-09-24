@@ -8,7 +8,7 @@
     "initial_message": "Hello! Thank you for calling Smile Dental Care. Are you calling to book a routine cleaning or do you have a dental emergency today?",
     "voice_id": "EXAVITQu4vr4xnSDxMaL",
     "voice_name": "Sarah",
-    "model_name": "gemini-3.5-flash-lite",
+    "model_name": "gemini-3.5-flash",
     "temperature": 0.7,
     "idle_nudge_timeout": 12.0,
     "idle_messages": [

@@ -90,6 +90,13 @@ def get_tokenizer_info(model: str) -> Optional[TokenizerInfo]:
         model = "gpt-4o"
     elif "gpt4" in model or "gpt-4" in model:
         model = "gpt-4"
+    elif "gemini" in model.lower():
+        # Google Gemini uses SentencePiece; cl100k_base provides an accurate token approximation for context windowing
+        return TokenizerInfo(
+            encoding=tiktoken.get_encoding("cl100k_base"),
+            tokens_per_message=3,
+            tokens_per_name=1,
+        )
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
