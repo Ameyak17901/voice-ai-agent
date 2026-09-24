@@ -1,5 +1,6 @@
 import os
-from typing import Optional
+import json
+from typing import Optional, List
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -48,10 +49,33 @@ class Settings(BaseSettings):
     )
 
     @property
-    def cors_origins_list(self) -> list[str]:
-        if not self.allowed_origins or self.allowed_origins.strip() == "*":
+    def cors_origins_list(self) -> List[str]:
+        raw = (self.allowed_origins or "").strip()
+        if not raw or raw == "*":
             return ["*"]
-        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
+
+        # Parse JSON array string e.g. ["http://localhost:5173", "https://..."]
+        items = []
+        if isinstance(raw, list):
+            items = raw
+        elif isinstance(raw, str) and raw.startswith("[") and raw.endswith("]"):
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    items = [str(x) for x in parsed]
+            except Exception:
+                items = raw.strip("[]").split(",")
+        else:
+            items = raw.split(",")
+
+        cleaned: List[str] = []
+        for item in items:
+            # Strip surrounding whitespace, single/double quotes, and trailing slashes
+            c = item.strip().strip("'\"").strip().rstrip("/")
+            if c:
+                cleaned.append(c)
+
+        return cleaned or ["*"]
 
     @property
     def has_stt_creds(self) -> bool:
