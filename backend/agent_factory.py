@@ -1,5 +1,5 @@
 import os
-from typing import AsyncGenerator, Callable, Dict, Tuple, Optional
+from typing import AsyncGenerator, Callable, Dict, Tuple, Optional, Any
 from loguru import logger
 
 from vocode.streaming.agent.base_agent import BaseAgent, GeneratedResponse, RespondAgent
@@ -27,9 +27,26 @@ from vocode.streaming.transcriber.deepgram_transcriber import (
     DeepgramEndpointingConfig,
 )
 
+from vocode.streaming.action.abstract_factory import AbstractActionFactory
 from .config import settings
 from .tools import check_availability, book_appointment, get_company_info
 from .agent_registry import agent_registry
+from backend.actions.appointment_actions import (
+    CheckAvailabilityActionConfig,
+    BookAppointmentActionConfig,
+    GetCompanyInfoActionConfig,
+)
+from backend.actions.factory import CustomActionFactory
+
+
+ACTION_INSTRUCTIONS = (
+    "Tool Capabilities:\n"
+    "- You have access to real-time tools: 'check_availability', 'book_appointment', and 'get_company_info'.\n"
+    "- When the caller inquires about open times or schedule, call 'check_availability' with the target date.\n"
+    "- When the caller wants to schedule/confirm an appointment and has given their name, date, time, and service, call 'book_appointment'.\n"
+    "- When the caller asks about services, company background, hours, or location, call 'get_company_info'.\n"
+    "- Never invent fake confirmation IDs or fabricate available slots without calling these tools."
+)
 
 
 GOODBYE_PHRASES = [
@@ -240,8 +257,14 @@ class ResilientChatGPTAgent(ChatGPTAgent):
     so the voice session never crashes or goes silent.
     """
 
-    def __init__(self, config: ChatGPTAgentConfig, fallback_agent: Optional[SmartFallbackAgent] = None):
-        super().__init__(config)
+    def __init__(
+        self,
+        config: ChatGPTAgentConfig,
+        action_factory: Optional[AbstractActionFactory] = None,
+        fallback_agent: Optional[SmartFallbackAgent] = None,
+        **kwargs,
+    ):
+        super().__init__(config, action_factory=action_factory or CustomActionFactory(), **kwargs)
         self.fallback_agent = fallback_agent or SmartFallbackAgent()
         self.fallback_active = False
 
@@ -280,13 +303,21 @@ class ResilientChatGPTAgent(ChatGPTAgent):
                 yield resp
 
 
-def create_agent(persona_key: Optional[str] = None) -> BaseAgent:
-    """Factory to create an LLM agent (Gemini 1.5 Flash, ChatGPTAgent, or SmartFallbackAgent) with persona awareness."""
-    persona = persona_key or settings.default_persona
-    persona_obj = agent_registry.get_persona(persona) or agent_registry.get_persona("concierge")
+def create_agent(
+    persona_key: Optional[str] = None,
+    user_id: Optional[int] = None,
+    user_settings: Optional[Dict[str, Any]] = None,
+) -> BaseAgent:
+    """Factory to create an LLM agent with persona awareness, action calling, and user-specific credentials."""
+    u_settings = user_settings or {}
+    persona = persona_key or u_settings.get("default_persona") or settings.default_persona
+    persona_obj = agent_registry.get_persona(persona, user_id=user_id) or agent_registry.get_persona("concierge")
     prompt_preamble = persona_obj.system_prompt if persona_obj else PERSONA_PROMPTS.get(persona, PERSONA_PROMPTS["concierge"])
     if CLOSURE_INSTRUCTION not in prompt_preamble:
         prompt_preamble = f"{prompt_preamble}\n\n{CLOSURE_INSTRUCTION}"
+    if "Tool Capabilities" not in prompt_preamble:
+        prompt_preamble = f"{prompt_preamble}\n\n{ACTION_INSTRUCTIONS}"
+
     initial_text = persona_obj.initial_message if persona_obj else PERSONA_INITIAL_MESSAGE.get(persona, PERSONA_INITIAL_MESSAGE["concierge"])
     fallback_agent = SmartFallbackAgent(persona=persona, initial_message=initial_text)
 
@@ -295,14 +326,21 @@ def create_agent(persona_key: Optional[str] = None) -> BaseAgent:
     allowed_idle = persona_obj.idle_nudge_timeout if persona_obj else settings.allowed_idle_time_seconds
     num_retries = settings.num_check_human_present_times
 
-    # 1. Check for dedicated Gemini API key (Free Tier: 1,500 requests/day, fast sub-200ms TTFT)
-    gemini_key = settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
+    # Configure actions and action factory
+    actions = [
+        CheckAvailabilityActionConfig(),
+        BookAppointmentActionConfig(),
+        GetCompanyInfoActionConfig(),
+    ]
+    action_factory = CustomActionFactory(actions=actions)
+
+    # 1. Check for user-specific or system Gemini API key
+    gemini_key = u_settings.get("gemini_api_key") or settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        model_name = settings.openai_model_name or "gemini-3.5-flash"
-        # Auto-upgrade deprecated Google Gemini model endpoints
-        if any(deprecated in model_name for deprecated in ["gemini-1.5", "gemini-2.0", "gemini-2.5", "gemini-1.0"]):
-            model_name = "gemini-3.5-flash"
-        logger.info(f"Initializing ResilientChatGPTAgent with Google {model_name} for persona '{persona}' (idle_nudge={allowed_idle}s)...")
+        model_name = u_settings.get("openai_model_name") or settings.openai_model_name or "gemini-1.5-flash"
+        if "gemini-3.5" in model_name:
+            model_name = "gemini-1.5-flash"
+        logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}) with Google {model_name} for persona '{persona}'...")
         config = ChatGPTAgentConfig(
             initial_message=BaseMessage(text=initial_text),
             prompt_preamble=prompt_preamble,
@@ -316,19 +354,19 @@ def create_agent(persona_key: Optional[str] = None) -> BaseAgent:
             max_tokens=150,
             end_conversation_on_goodbye=True,
             goodbye_phrases=GOODBYE_PHRASES,
+            actions=actions,
         )
-        return ResilientChatGPTAgent(config, fallback_agent=fallback_agent)
+        return ResilientChatGPTAgent(config, action_factory=action_factory, fallback_agent=fallback_agent)
 
-    # 2. Check for OpenAI or Groq API credentials
-    openai_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY")
+    # 2. Check for user-specific or system OpenAI credentials
+    openai_key = u_settings.get("openai_api_key") or settings.openai_api_key or os.getenv("OPENAI_API_KEY")
     if openai_key:
-        model_name = settings.openai_model_name
-        base_url = settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
-        # If model is configured as gemini and key passed under openai_key:
+        model_name = u_settings.get("openai_model_name") or settings.openai_model_name
+        base_url = u_settings.get("openai_base_url") or settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
         if "gemini" in model_name.lower() and not base_url:
             base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
-        logger.info(f"Initializing ResilientChatGPTAgent (Model: {model_name}) for persona '{persona}' (idle_nudge={allowed_idle}s)...")
+        logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}, Model: {model_name}) for persona '{persona}'...")
         config = ChatGPTAgentConfig(
             initial_message=BaseMessage(text=initial_text),
             prompt_preamble=prompt_preamble,
@@ -342,18 +380,23 @@ def create_agent(persona_key: Optional[str] = None) -> BaseAgent:
             max_tokens=150,
             end_conversation_on_goodbye=True,
             goodbye_phrases=GOODBYE_PHRASES,
+            actions=actions,
         )
-        return ResilientChatGPTAgent(config, fallback_agent=fallback_agent)
+        return ResilientChatGPTAgent(config, action_factory=action_factory, fallback_agent=fallback_agent)
 
     logger.warning(
-        f"No LLM API key detected. Starting with SmartFallbackAgent for persona '{persona}'."
+        f"No LLM API key detected for user {user_id}. Starting with SmartFallbackAgent for persona '{persona}'."
     )
     return fallback_agent
 
 
-def create_transcriber(input_audio_config: InputAudioConfig) -> BaseTranscriber:
+def create_transcriber(
+    input_audio_config: InputAudioConfig,
+    user_settings: Optional[Dict[str, Any]] = None,
+) -> BaseTranscriber:
     """Factory to create the streaming STT transcriber with Nova-2 and Neural VAD."""
-    api_key = settings.deepgram_api_key or os.getenv("DEEPGRAM_API_KEY")
+    u_settings = user_settings or {}
+    api_key = u_settings.get("deepgram_api_key") or settings.deepgram_api_key or os.getenv("DEEPGRAM_API_KEY")
     endpointing_cfg = DeepgramEndpointingConfig(
         vad_threshold_ms=300,
         utterance_cutoff_ms=800,
@@ -366,14 +409,12 @@ def create_transcriber(input_audio_config: InputAudioConfig) -> BaseTranscriber:
             language="en-US",
             endpointing_config=endpointing_cfg,
             api_key=api_key,
-            mute_during_speech=False,  # Allow barge-in and ensure human audio is captured continuously
+            mute_during_speech=False,
             min_interrupt_confidence=0.7,
         )
         return DeepgramTranscriber(config)
     else:
-        logger.warning(
-            "No DEEPGRAM_API_KEY detected. Setting up DeepgramTranscriber with default env check."
-        )
+        logger.warning("No DEEPGRAM_API_KEY detected. Setting up DeepgramTranscriber with default env check.")
         config = DeepgramTranscriberConfig.from_input_audio_config(
             input_audio_config=input_audio_config,
             model="nova-2",
@@ -395,25 +436,28 @@ PERSONA_ELEVEN_LABS_VOICE_IDS = {
 def create_synthesizer(
     output_audio_config: OutputAudioConfig,
     persona_key: Optional[str] = None,
+    user_id: Optional[int] = None,
+    user_settings: Optional[Dict[str, Any]] = None,
 ) -> BaseSynthesizer:
     """Factory to create the streaming TTS synthesizer with ElevenLabs as primary studio provider."""
-    provider = settings.tts_provider.lower().strip()
-    eleven_labs_key = settings.eleven_labs_api_key or os.getenv("ELEVEN_LABS_API_KEY")
+    u_settings = user_settings or {}
+    provider = (u_settings.get("tts_provider") or settings.tts_provider).lower().strip()
+    eleven_labs_key = u_settings.get("eleven_labs_api_key") or settings.eleven_labs_api_key or os.getenv("ELEVEN_LABS_API_KEY")
 
-    # 1. ElevenLabs Studio Quality Streaming TTS (Turbo v2.5, Linear16 PCM 16kHz)
     if provider == "eleven_labs" or (eleven_labs_key and provider not in ("cartesia", "azure", "edge_tts", "stream_elements")):
-        # Resolve persona-specific voice ID if available
         voice_id = None
-        persona_obj = agent_registry.get_persona(persona_key)
+        persona_obj = agent_registry.get_persona(persona_key, user_id=user_id)
         if persona_obj and persona_obj.voice_id:
             voice_id = persona_obj.voice_id
+        elif u_settings.get("eleven_labs_voice_id"):
+            voice_id = u_settings["eleven_labs_voice_id"]
         elif persona_key and persona_key in PERSONA_ELEVEN_LABS_VOICE_IDS:
             voice_id = PERSONA_ELEVEN_LABS_VOICE_IDS[persona_key]
         if not voice_id:
             voice_id = settings.eleven_labs_voice_id or "cgSgspJ2msm6clMCkdW9"
 
         logger.info(
-            f"Using ElevenLabs Turbo v2.5 Synthesizer (Voice ID: {voice_id}, Persona: '{persona_key or 'default'}', Model: {settings.eleven_labs_model_id})."
+            f"Using ElevenLabs Turbo v2.5 Synthesizer (Voice ID: {voice_id}, Persona: '{persona_key or 'default'}')."
         )
         config = ElevenLabsSynthesizerConfig.from_output_audio_config(
             output_audio_config=output_audio_config,

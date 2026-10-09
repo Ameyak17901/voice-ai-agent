@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
+import { apiPost } from '../api/client';
 
 const EMOJI_OPTIONS = ['🤖', '🏥', '🦷', '🏡', '⚖️', '🚗', '✈️', '💻', '🩺', '🎓', '🏋️', '🛍️', '✨', '📞', '🎙️'];
 
@@ -146,11 +147,7 @@ export default function AgentBuilderModal({ isOpen, onClose, onAgentCreated }) {
         is_custom: true,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/personas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const res = await apiPost('/api/personas', payload);
 
       const data = await res.json();
       if (!res.ok) {

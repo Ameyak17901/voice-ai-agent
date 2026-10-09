@@ -205,46 +205,90 @@ class AgentRegistry:
                     pass
             raise
 
-    def get_all_personas(self) -> List[VoicePersona]:
-        """Returns all built-in and custom personas merged together."""
+    def get_all_personas(self, user_id: Optional[int] = None) -> List[VoicePersona]:
+        """Returns all built-in and user-scoped custom personas merged together."""
         merged: List[VoicePersona] = list(BUILTIN_PERSONAS.values())
-        merged.extend(self._custom_personas.values())
+        try:
+            from backend.db.repository import db_repository
+            db_personas = db_repository.list_custom_personas(user_id=user_id)
+            seen_ids = {p.id for p in merged}
+            for p_dict in db_personas:
+                if p_dict["id"] not in seen_ids:
+                    merged.append(VoicePersona.model_validate(p_dict))
+                    seen_ids.add(p_dict["id"])
+        except Exception:
+            for p in self._custom_personas.values():
+                if p.id not in [m.id for m in merged]:
+                    merged.append(p)
         return merged
 
-    def get_persona(self, persona_id: Optional[str]) -> Optional[VoicePersona]:
-        """Look up a persona by ID from built-ins or custom."""
+    def get_persona(self, persona_id: Optional[str], user_id: Optional[int] = None) -> Optional[VoicePersona]:
+        """Look up a persona by ID from built-ins or user-scoped custom personas."""
         if not persona_id:
             return BUILTIN_PERSONAS.get("concierge")
-        if persona_id in self._custom_personas:
-            return self._custom_personas[persona_id]
         if persona_id in BUILTIN_PERSONAS:
             return BUILTIN_PERSONAS[persona_id]
+
+        # Check SQLite repository for user-scoped custom persona
+        try:
+            from backend.db.repository import db_repository
+            custom_dict = db_repository.get_custom_persona(persona_id, user_id=user_id)
+            if custom_dict:
+                return VoicePersona.model_validate(custom_dict)
+        except Exception:
+            pass
+
+        if persona_id in self._custom_personas:
+            return self._custom_personas[persona_id]
         return None
 
-    def save_custom_persona(self, persona: VoicePersona) -> VoicePersona:
-        """Saves or updates a custom persona."""
+    def save_custom_persona(self, persona: VoicePersona, user_id: Optional[int] = None) -> VoicePersona:
+        """Saves or updates a custom persona scoped to a specific user."""
         persona_id = persona.id.strip().lower().replace(" ", "_")
         if persona_id in BUILTIN_PERSONAS:
             raise ValueError(f"Cannot overwrite factory built-in persona: '{persona_id}'")
 
         persona.id = persona_id
         persona.is_custom = True
+
+        # Persist to SQLite
+        try:
+            from backend.db.repository import db_repository
+            p_dict = persona.model_dump()
+            db_repository.save_custom_persona(p_dict, user_id=user_id)
+        except Exception as e:
+            logger.warning(f"Failed to persist custom persona to SQLite: {e}")
+
         self._custom_personas[persona_id] = persona
-        self._save_to_disk()
-        logger.info(f"Successfully saved custom persona: '{persona.name}' (id: {persona_id})")
+        try:
+            self._save_to_disk()
+        except Exception:
+            pass
+        logger.info(f"Successfully saved custom persona: '{persona.name}' (id: {persona_id}, user_id: {user_id})")
         return persona
 
-    def delete_custom_persona(self, persona_id: str) -> bool:
+    def delete_custom_persona(self, persona_id: str, user_id: Optional[int] = None) -> bool:
         """Deletes a custom persona by ID. Built-ins cannot be deleted."""
         clean_id = persona_id.strip().lower()
         if clean_id in BUILTIN_PERSONAS:
             raise ValueError("Built-in personas cannot be deleted.")
+
+        deleted_from_db = False
+        try:
+            from backend.db.repository import db_repository
+            deleted_from_db = db_repository.delete_custom_persona(clean_id, user_id=user_id)
+        except Exception:
+            pass
+
         if clean_id in self._custom_personas:
             del self._custom_personas[clean_id]
-            self._save_to_disk()
-            logger.info(f"Successfully deleted custom persona: '{clean_id}'")
+            try:
+                self._save_to_disk()
+            except Exception:
+                pass
             return True
-        return False
+
+        return deleted_from_db
 
     def get_voice_presets(self) -> List[VoicePreset]:
         """Returns available ElevenLabs voice presets for the UI."""
