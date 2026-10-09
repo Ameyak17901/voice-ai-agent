@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import VisualizerCanvas from './components/VisualizerCanvas';
 import VoiceOrb from './components/VoiceOrb';
@@ -7,10 +7,17 @@ import QuickPrompts from './components/QuickPrompts';
 import TranscriptFeed from './components/TranscriptFeed';
 import DiagnosticsCard from './components/DiagnosticsCard';
 import AgentBuilderModal from './components/AgentBuilderModal';
+import AuthModal from './components/AuthModal';
+import CallHistoryModal from './components/CallHistoryModal';
+import SettingsModal from './components/SettingsModal';
 import { useVocodeVoice } from './hooks/useVocodeVoice';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { apiGet, apiPost, apiDelete } from './api/client';
 import { API_BASE_URL } from './config';
 
-export default function App() {
+function AppContent() {
+  const { user, isAuthenticated } = useAuth();
+
   const {
     isConnected,
     isConnecting,
@@ -30,12 +37,15 @@ export default function App() {
   const [persona, setPersona] = useState('concierge');
   const [personas, setPersonas] = useState([]);
   const [isAgentBuilderOpen, setIsAgentBuilderOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(null);
 
   // Fetch backend status
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/status`);
+      const res = await apiGet('/api/status');
       if (res.ok) {
         const data = await res.json();
         setSystemStatus(data);
@@ -44,12 +54,12 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch status:', e);
     }
-  };
+  }, []);
 
-  // Fetch all personas (built-in + custom from agent_registry.json)
-  const fetchPersonas = async () => {
+  // Fetch all personas (built-in + user-scoped custom from backend)
+  const fetchPersonas = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/personas`);
+      const res = await apiGet('/api/personas');
       if (res.ok) {
         const data = await res.json();
         setPersonas(data);
@@ -57,25 +67,30 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch personas:', e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStatus();
     fetchPersonas();
-  }, []);
+  }, [fetchStatus, fetchPersonas, isAuthenticated]);
 
   const handlePersonaChange = async (newPersona) => {
     setPersona(newPersona);
     try {
-      await fetch(`${API_BASE_URL}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ default_persona: newPersona }),
-      });
+      await apiPost('/api/settings', { default_persona: newPersona });
       fetchStatus();
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleSaveSettings = async (settingsPayload) => {
+    const res = await apiPost('/api/settings', settingsPayload);
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.detail || 'Failed to update settings');
+    }
+    fetchStatus();
   };
 
   const handleAgentCreated = (newAgent) => {
@@ -90,7 +105,7 @@ export default function App() {
   const handleDeletePersona = async (personaId) => {
     if (!window.confirm('Are you sure you want to delete this custom agent?')) return;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/personas/${personaId}`, { method: 'DELETE' });
+      const res = await apiDelete(`/api/personas/${personaId}`);
       if (res.ok) {
         setPersona('concierge');
         fetchPersonas();
@@ -125,6 +140,9 @@ export default function App() {
         isConnecting={isConnecting}
         isSpeaking={isSpeaking}
         isHearingUser={Boolean(interimTranscript)}
+        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       <main className="main-layout">
@@ -180,11 +198,37 @@ export default function App() {
         </aside>
       </main>
 
+      {/* Modals & Drawers */}
       <AgentBuilderModal
         isOpen={isAgentBuilderOpen}
         onClose={() => setIsAgentBuilderOpen(false)}
         onAgentCreated={handleAgentCreated}
       />
+
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+      />
+
+      <CallHistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSave={handleSaveSettings}
+        currentTts={systemStatus?.tts_provider}
+      />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

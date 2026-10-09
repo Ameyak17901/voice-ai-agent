@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { WS_BASE_URL } from '../config';
+import { getStoredToken } from '../api/client';
 
 export function useVocodeVoice() {
   const [isConnected, setIsConnected] = useState(false);
@@ -367,9 +368,14 @@ export function useVocodeVoice() {
         }
       };
 
-      // 3. Connect WebSocket to Vocode backend with persona query parameter
-      const personaParam = personaOverride ? `?persona=${encodeURIComponent(personaOverride)}` : '';
-      const wsUrl = `${WS_BASE_URL}/conversation${personaParam}`;
+      // 3. Connect WebSocket to Vocode backend with persona and auth token query parameters
+      const params = new URLSearchParams();
+      if (personaOverride) params.set('persona', personaOverride);
+      const token = getStoredToken();
+      if (token) params.set('token', token);
+
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+      const wsUrl = `${WS_BASE_URL}/conversation${queryString}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
