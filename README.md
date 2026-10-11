@@ -181,9 +181,3 @@ poetry run python run.py --test
 - **Database Files**: SQLite database files (`*.db`, `*.db-wal`, `*.db-shm`) are excluded via `.gitignore` to prevent leaking private credentials or conversation transcripts.
 - **Secret Isolation**: User API keys configured in the settings drawer are encrypted/persisted per user in SQLite and never logged or exposed to other tenants.
 - **Token Security**: Tokens are signed with HMAC-SHA256 and rotated on every single-use refresh token exchange.
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
