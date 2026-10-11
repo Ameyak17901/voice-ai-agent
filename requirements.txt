@@ -1,32 +1,104 @@
-# Core Vocode SDK (Editable local dependency)
 -e ./vocode-core
-
-# Web Server & Framework
-fastapi>=0.111.0,<0.112.0
-uvicorn[standard]>=0.30.0
-pydantic>=2.7.2
-pydantic-settings>=2.3.0
-python-dotenv>=1.0.0
-websockets>=14.0
-
-# Audio Processing & C-Extensions
-numpy==1.26.4
-miniaudio>=1.59.0
-sounddevice>=0.4.7
-pydub>=0.25.1
-
-# Speech-to-Text & Text-to-Speech Providers
-deepgram-sdk>=7.8.0
-cartesia>=4.2.0
-elevenlabs>=1.2.2
-edge-tts>=7.2.8
-azure-cognitiveservices-speech>=1.38.0
-pyht>=0.0.28
-
-# LLM Providers & Agent Utilities
-openai>=1.30.5
-anthropic>=0.28.0
-tiktoken>=0.7.0
-nltk>=3.8.1
-janus>=1.0.0
-loguru>=0.7.2
+aiohappyeyeballs==2.7.1 ; python_version >= "3.10" and python_version < "3.12"
+aiohttp==3.14.4 ; python_version >= "3.10" and python_version < "3.12"
+aiosignal==1.4.0 ; python_version >= "3.10" and python_version < "3.12"
+annotated-doc==0.0.5 ; python_version >= "3.10" and python_version < "3.12"
+annotated-types==0.8.0 ; python_version >= "3.10" and python_version < "3.12"
+anthropic==0.28.1 ; python_version >= "3.10" and python_version < "3.12"
+anyio==4.15.1 ; python_version >= "3.10" and python_version < "3.12"
+async-timeout==5.0.1 ; python_version >= "3.10" and python_full_version < "3.11.3"
+attrs==26.1.0 ; python_version >= "3.10" and python_version < "3.12"
+azure-cognitiveservices-speech==1.52.0 ; python_version >= "3.10" and python_version < "3.12"
+azure-core==1.41.0 ; python_version >= "3.10" and python_version < "3.12"
+cartesia==4.2.0 ; python_version >= "3.10" and python_version < "3.12"
+certifi==2026.7.22 ; python_version >= "3.10" and python_version < "3.12"
+cffi==2.1.1 ; python_version >= "3.10" and python_version < "3.12"
+charset-normalizer==3.5.2 ; python_version >= "3.10" and python_version < "3.12"
+click==8.5.0 ; python_version >= "3.10" and python_version < "3.12"
+cloudpickle==3.1.2 ; python_version >= "3.10" and python_version < "3.12"
+colorama==0.4.6 ; python_version >= "3.10" and python_version < "3.12" and (sys_platform == "win32" or platform_system == "Windows")
+cryptography==50.0.2 ; python_version >= "3.10" and python_version < "3.12"
+deepgram-sdk==7.12.0 ; python_version >= "3.10" and python_version < "3.12"
+defusedxml==0.7.1 ; python_version >= "3.10" and python_version < "3.12"
+distro==1.9.0 ; python_version >= "3.10" and python_version < "3.12"
+dnspython==2.8.0 ; python_version >= "3.10" and python_version < "3.12"
+edge-tts==7.2.8 ; python_version >= "3.10" and python_version < "3.12"
+elevenlabs==1.59.0 ; python_version >= "3.10" and python_version < "3.12"
+email-validator==2.3.0 ; python_version >= "3.10" and python_version < "3.12"
+exceptiongroup==1.3.1 ; python_version >= "3.10" and python_version < "3.11"
+fastapi-cli==0.0.32 ; python_version >= "3.10" and python_version < "3.12"
+fastapi==0.111.1 ; python_version >= "3.10" and python_version < "3.12"
+filelock==3.32.7 ; python_version >= "3.10" and python_version < "3.12"
+frozenlist==1.8.0 ; python_version >= "3.10" and python_version < "3.12"
+fsspec==2026.9.0 ; python_version >= "3.10" and python_version < "3.12"
+greenlet==3.5.6 ; python_version >= "3.10" and python_version < "3.12" and (platform_machine == "aarch64" or platform_machine == "ppc64le" or platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "AMD64" or platform_machine == "win32" or platform_machine == "WIN32")
+grpcio==1.84.0 ; python_version >= "3.10" and python_version < "3.12"
+h11==0.16.0 ; python_version >= "3.10" and python_version < "3.12"
+hf-xet==1.7.0 ; python_version >= "3.10" and python_version < "3.12" and (platform_machine == "x86_64" or platform_machine == "amd64" or platform_machine == "AMD64" or platform_machine == "arm64" or platform_machine == "aarch64")
+httpcore==1.0.9 ; python_version >= "3.10" and python_version < "3.12"
+httptools==0.8.0 ; python_version >= "3.10" and python_version < "3.12"
+httpx==0.28.1 ; python_version >= "3.10" and python_version < "3.12"
+huggingface-hub==1.33.0 ; python_version >= "3.10" and python_version < "3.12"
+idna==3.20 ; python_version >= "3.10" and python_version < "3.12"
+janus==1.2.0 ; python_version >= "3.10" and python_version < "3.12"
+jinja2==3.1.6 ; python_version >= "3.10" and python_version < "3.12"
+jiter==0.17.0 ; python_version >= "3.10" and python_version < "3.12"
+joblib==1.6.0 ; python_version >= "3.10" and python_version < "3.12"
+jsonschema-specifications==2025.9.1 ; python_version >= "3.10" and python_version < "3.12"
+jsonschema==4.26.0 ; python_version >= "3.10" and python_version < "3.12"
+loguru==0.7.3 ; python_version >= "3.10" and python_version < "3.12"
+markdown-it-py==4.2.0 ; python_version >= "3.10" and python_version < "3.12"
+markupsafe==3.0.4 ; python_version >= "3.10" and python_version < "3.12"
+mdurl==0.1.2 ; python_version >= "3.10" and python_version < "3.12"
+miniaudio==1.71 ; python_version >= "3.10" and python_version < "3.12"
+multidict==6.9.1 ; python_version >= "3.10" and python_version < "3.12"
+nltk==3.10.3 ; python_version >= "3.10" and python_version < "3.12"
+numpy==1.26.4 ; python_version >= "3.10" and python_version < "3.12"
+openai==1.109.1 ; python_version >= "3.10" and python_version < "3.12"
+opentelemetry-api==1.45.1 ; python_version >= "3.10" and python_version < "3.12"
+opentelemetry-sdk==1.45.1 ; python_version >= "3.10" and python_version < "3.12"
+opentelemetry-semantic-conventions==0.66b1 ; python_version >= "3.10" and python_version < "3.12"
+packaging==26.3 ; python_version >= "3.10" and python_version < "3.12"
+phonenumbers==8.13.55 ; python_version >= "3.10" and python_version < "3.12"
+propcache==0.5.4 ; python_version >= "3.10" and python_version < "3.12"
+protobuf==4.25.9 ; python_version >= "3.10" and python_version < "3.12"
+pycparser==3.1 ; python_version >= "3.10" and python_version < "3.12" and implementation_name != "PyPy"
+pydantic-core==2.50.0 ; python_version >= "3.10" and python_version < "3.12"
+pydantic-settings==2.15.0 ; python_version >= "3.10" and python_version < "3.12"
+pydantic==2.14.0 ; python_version >= "3.10" and python_version < "3.12"
+pydub==0.25.1 ; python_version >= "3.10" and python_version < "3.12"
+pygments==2.21.0 ; python_version >= "3.10" and python_version < "3.12"
+pyht==0.0.28 ; python_version >= "3.10" and python_version < "3.12"
+pyjwt==2.15.1 ; python_version >= "3.10" and python_version < "3.12"
+python-dotenv==1.2.4 ; python_version >= "3.10" and python_version < "3.12"
+python-multipart==0.0.32 ; python_version >= "3.10" and python_version < "3.12"
+pyyaml==6.0.3 ; python_version >= "3.10" and python_version < "3.12"
+redis==5.3.1 ; python_version >= "3.10" and python_version < "3.12"
+referencing==0.37.0 ; python_version >= "3.10" and python_version < "3.12"
+regex==2026.9.29 ; python_version >= "3.10" and python_version < "3.12"
+requests==2.34.2 ; python_version >= "3.10" and python_version < "3.12"
+rich-toolkit==0.20.6 ; python_version >= "3.10" and python_version < "3.12"
+rich==15.0.0 ; python_version >= "3.10" and python_version < "3.12"
+rpds-py==0.30.0 ; python_version >= "3.10" and python_version < "3.12"
+sentry-sdk[fastapi]==2.71.0 ; python_version >= "3.10" and python_version < "3.12"
+shellingham==1.5.4 ; python_version >= "3.10" and python_version < "3.12"
+sniffio==1.3.1 ; python_version >= "3.10" and python_version < "3.12"
+sounddevice==0.4.7 ; python_version >= "3.10" and python_version < "3.12"
+sqlalchemy==2.0.54 ; python_version >= "3.10" and python_version < "3.12"
+starlette==0.37.2 ; python_version >= "3.10" and python_version < "3.12"
+tabulate==0.10.0 ; python_version >= "3.10" and python_version < "3.12"
+tiktoken==0.7.0 ; python_version >= "3.10" and python_version < "3.12"
+tokenizers==0.23.2 ; python_version >= "3.10" and python_version < "3.12"
+tomli==2.5.0 ; python_version >= "3.10" and python_version < "3.11"
+tqdm==4.70.1 ; python_version >= "3.10" and python_version < "3.12"
+typer==0.27.3 ; python_version >= "3.10" and python_version < "3.12"
+typing-extensions==4.16.0 ; python_version >= "3.10" and python_version < "3.12"
+typing-inspection==0.4.4 ; python_version >= "3.10" and python_version < "3.12"
+urllib3==2.8.0 ; python_version >= "3.10" and python_version < "3.12"
+uvicorn==0.30.6 ; python_version >= "3.10" and python_version < "3.12"
+uvicorn[standard]==0.30.6 ; python_version >= "3.10" and python_version < "3.12"
+uvloop==0.23.0 ; (sys_platform != "win32" and sys_platform != "cygwin") and platform_python_implementation != "PyPy" and python_version >= "3.10" and python_version < "3.12"
+watchfiles==1.3.0 ; python_version >= "3.10" and python_version < "3.12"
+websockets==14.2 ; python_version >= "3.10" and python_version < "3.12"
+win32-setctime==1.2.0 ; python_version >= "3.10" and python_version < "3.12" and sys_platform == "win32"
+yarl==1.25.1 ; python_version >= "3.10" and python_version < "3.12"

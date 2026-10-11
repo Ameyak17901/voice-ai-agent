@@ -1,5 +1,5 @@
 import os
-from typing import AsyncGenerator, Callable, Dict, Tuple, Optional, Any
+from typing import AsyncGenerator, Callable, Dict, Tuple, Optional, Any, List
 from loguru import logger
 
 from vocode.streaming.agent.base_agent import BaseAgent, GeneratedResponse, RespondAgent
@@ -267,6 +267,41 @@ class ResilientChatGPTAgent(ChatGPTAgent):
         super().__init__(config, action_factory=action_factory or CustomActionFactory(), **kwargs)
         self.fallback_agent = fallback_agent or SmartFallbackAgent()
         self.fallback_active = False
+
+    def get_chat_parameters(self, messages: Optional[List] = None, use_functions: bool = True):
+        """
+        Overrides Vocode's legacy get_chat_parameters to support modern OpenAI/Gemini 'tools' specification.
+        
+        Why this is critical:
+        Legacy Vocode supplies `functions` at top level. Modern providers (like Google Gemini's OpenAI proxy
+        at generativelanguage.googleapis.com) reject `functions` with HTTP 400 'Unknown name functions: Cannot find field'.
+        This method translates `functions` into modern `tools: [{"type": "function", "function": ...}]`.
+        """
+        parameters = super().get_chat_parameters(messages=messages, use_functions=use_functions)
+        
+        if "functions" in parameters:
+            raw_functions = parameters.pop("functions")
+            base_url = str(self.agent_config.base_url_override or "").lower()
+            model_name = str(self.agent_config.model_name or "").lower()
+            
+            # If Google Gemini proxy or modern OpenAI model, use standard 'tools' schema
+            is_gemini_endpoint = "generativelanguage.googleapis.com" in base_url or "gemini" in model_name
+            if is_gemini_endpoint:
+                parameters["tools"] = [
+                    {"type": "function", "function": fn}
+                    for fn in raw_functions
+                ]
+                logger.info(
+                    f"[AGENT_TOOLING] Translated {len(raw_functions)} legacy functions to modern OpenAI 'tools' "
+                    f"schema for model='{self.agent_config.model_name}'"
+                )
+            else:
+                parameters["tools"] = [
+                    {"type": "function", "function": fn}
+                    for fn in raw_functions
+                ]
+                
+        return parameters
 
     async def generate_response(
         self,

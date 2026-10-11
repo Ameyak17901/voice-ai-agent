@@ -1,0 +1,55 @@
+[tool.poetry]
+name = "voice-ai-agent"
+version = "0.2.0"
+description = "Full-duplex real-time streaming Voice AI copilot powered by Vocode, FastAPI, WebSockets, and SQLite."
+authors = ["Voice AI Team <team@voice-ai.local>"]
+readme = "README.md"
+packages = [
+    { include = "backend" }
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+fastapi = ">=0.111.0,<0.112.0"
+uvicorn = { extras = ["standard"], version = ">=0.30.0" }
+pydantic = ">=2.7.2"
+pydantic-settings = ">=2.3.0"
+python-dotenv = ">=1.0.0"
+websockets = ">=14.0"
+sqlalchemy = ">=2.0.28"
+pyjwt = ">=2.8.0"
+cryptography = ">=42.0.0"
+
+# Audio Processing & Transcoding
+numpy = "1.26.4"
+miniaudio = ">=1.59.0"
+sounddevice = ">=0.4.7"
+pydub = ">=0.25.1"
+
+# Speech-to-Text & Text-to-Speech Providers
+deepgram-sdk = ">=3.0.0"
+cartesia = ">=4.2.0"
+elevenlabs = ">=1.2.2"
+edge-tts = ">=7.2.8"
+azure-cognitiveservices-speech = ">=1.38.0"
+pyht = ">=0.0.28"
+
+# LLM Providers & Agent Utilities
+openai = ">=1.30.5"
+anthropic = ">=0.28.0"
+tiktoken = ">=0.7.0"
+nltk = ">=3.8.1"
+janus = ">=1.0.0"
+loguru = ">=0.7.2"
+
+# Local Vocode Core SDK dependency
+vocode = { path = "./vocode-core", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.23.0"
+httpx = ">=0.27.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

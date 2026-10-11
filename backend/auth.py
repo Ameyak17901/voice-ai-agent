@@ -1,12 +1,14 @@
 """
 Authentication and Authorization Module for Voice AI Agent.
-Implements PBKDF2-HMAC-SHA256 password hashing and PyJWT token lifecycle management.
+Implements PBKDF2-HMAC-SHA256 password hashing, PyJWT access tokens,
+and stateful refresh token rotation with reuse detection.
 """
 import os
 import hashlib
 import secrets
+import uuid
 import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -16,7 +18,12 @@ from loguru import logger
 # Configuration from environment with secure production defaults
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "voice-copilot-dev-secret-key-change-in-production-1234567890")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = int(os.getenv("JWT_EXPIRATION_HOURS", "24"))
+
+# Senior Engineering Architecture:
+# Access tokens are short-lived (15 minutes) to minimize exposure windows if intercepted.
+# Refresh tokens are long-lived (7 days) and statefully rotated on each use.
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -24,12 +31,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 def hash_password(password: str) -> str:
     """
     Hashes a plaintext password using PBKDF2-HMAC-SHA256 with a unique 16-byte random salt.
-    
-    Args:
-        password: Plaintext password string.
-        
-    Returns:
-        Formatted string: '{salt}${derived_key_hex}'
     """
     salt = secrets.token_hex(16)
     derived_key = hashlib.pbkdf2_hmac(
@@ -44,13 +45,6 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verifies a plaintext password against a stored salted hash using constant-time comparison.
-    
-    Args:
-        plain_password: The plaintext candidate password.
-        hashed_password: Stored '{salt}${derived_key_hex}' string.
-        
-    Returns:
-        True if the password matches, False otherwise.
     """
     try:
         salt, expected_key = hashed_password.split("$", 1)
@@ -71,37 +65,33 @@ def create_access_token(
     expires_delta: Optional[datetime.timedelta] = None,
 ) -> str:
     """
-    Encodes and signs a JWT access token.
-    
-    Args:
-        data: Claims payload to encode (must contain 'sub').
-        expires_delta: Optional custom token expiration duration.
-        
-    Returns:
-        Encoded JWT token string.
+    Encodes and signs a short-lived JWT access token.
     """
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.datetime.utcnow() + expires_delta
     else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(hours=JWT_EXPIRATION_HOURS)
-        
-    to_encode.update({"exp": expire, "iat": datetime.datetime.utcnow()})
+        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.datetime.utcnow(),
+        "jti": str(uuid.uuid4()),
+        "type": "access",
+    })
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """
     Decodes and validates a JWT access token.
-    
-    Args:
-        token: Raw JWT token string.
-        
-    Returns:
-        Decoded payload dict or None if invalid or expired.
+    Returns payload if valid and unexpired; returns None if expired or invalid.
     """
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access":
+            logger.warning("Rejected token: Expected type='access'")
+            return None
         return payload
     except jwt.ExpiredSignatureError:
         logger.info("JWT access token has expired.")
@@ -111,12 +101,150 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def hash_token_string(raw_token: str) -> str:
+    """Hashes a raw refresh token string with SHA-256 for safe database indexing."""
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def issue_token_pair(
+    user_id: int,
+    username: str,
+    family_id: Optional[str] = None,
+) -> Tuple[str, str]:
+    """
+    Generates a fresh (access_token, refresh_token) pair and persists the stateful
+    refresh token in the database.
+    
+    Args:
+        user_id: The ID of the authenticated user.
+        username: The username claim to embed in the access token.
+        family_id: Existing token family ID during rotation, or None for initial login.
+        
+    Returns:
+        Tuple of (raw_access_token, raw_refresh_token).
+    """
+    from backend.db.repository import db_repository
+
+    # 1. Create short-lived access token (JWT)
+    access_token = create_access_token({"sub": str(user_id), "username": username})
+
+    # 2. Create cryptographically secure opaque refresh token
+    raw_refresh_token = secrets.token_urlsafe(48)
+    token_hash = hash_token_string(raw_refresh_token)
+    fam_id = family_id or str(uuid.uuid4())
+    expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    # 3. Persist refresh token in database
+    db_repository.store_refresh_token(
+        user_id=user_id,
+        token_hash=token_hash,
+        family_id=fam_id,
+        expires_at=expires_at,
+    )
+
+    return access_token, raw_refresh_token
+
+
+def rotate_refresh_token(raw_refresh_token: str) -> Tuple[str, str, Dict[str, Any]]:
+    """
+    Rotates a refresh token following the strict OAuth 2.0 Token Exchange with Reuse Detection.
+    
+    Security Workflow:
+    1. Look up token by SHA-256 hash.
+    2. If token does not exist: Reject.
+    3. If token exists BUT is already marked is_revoked=True:
+       -> THEFT / REUSE DETECTED!
+       -> Invalidate ENTIRE token family immediately to protect user.
+       -> Reject request.
+    4. If token is expired:
+       -> Reject request.
+    5. Token is valid and unused:
+       -> Invalidate (revoke) this old token.
+       -> Issue new access token + new refresh token under the same family_id.
+       -> Return new credentials.
+       
+    Returns:
+        Tuple of (new_access_token, new_refresh_token, user_dict).
+        
+    Raises:
+        HTTPException 401 if invalid, expired, or compromised.
+    """
+    from backend.db.repository import db_repository
+
+    token_hash = hash_token_string(raw_refresh_token)
+    rt_record = db_repository.get_refresh_token_by_hash(token_hash)
+
+    if not rt_record:
+        logger.warning("Refresh token rotation attempted with nonexistent token.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    family_id = rt_record["family_id"]
+    user_id = rt_record["user_id"]
+
+    # Check for Reuse Attack
+    if rt_record["is_revoked"]:
+        logger.critical(
+            f"[SECURITY ALERT] Refresh token reuse detected for user_id={user_id}, "
+            f"family_id={family_id}! Invalidation of entire session family triggered."
+        )
+        db_repository.revoke_token_family(family_id)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token reuse detected. All active sessions in this family revoked for security.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Check for Expiration
+    expires_at_dt = datetime.datetime.fromisoformat(rt_record["expires_at"])
+    if datetime.datetime.utcnow() > expires_at_dt:
+        logger.info(f"Refresh token expired for user_id={user_id}.")
+        db_repository.revoke_refresh_token(token_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expired. Please sign in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Fetch User
+    user = db_repository.get_user_by_id(user_id)
+    if not user or not user.get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account inactive or deleted",
+        )
+
+    # 1. Invalidate current refresh token
+    db_repository.revoke_refresh_token(token_hash)
+
+    # 2. Issue new token pair in the same family
+    new_access_token, new_refresh_token = issue_token_pair(
+        user_id=user["id"],
+        username=user["username"],
+        family_id=family_id,
+    )
+
+    logger.info(f"[AUTH] Successfully rotated refresh token for user '{user['username']}' (family={family_id}).")
+    return new_access_token, new_refresh_token, user
+
+
+def revoke_token(raw_refresh_token: str) -> bool:
+    """Revokes a refresh token on explicit user sign-out."""
+    from backend.db.repository import db_repository
+    token_hash = hash_token_string(raw_refresh_token)
+    rt = db_repository.get_refresh_token_by_hash(token_hash)
+    if rt:
+        db_repository.revoke_token_family(rt["family_id"])
+        return True
+    return False
+
+
 async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)) -> Dict[str, Any]:
     """
     FastAPI dependency that enforces JWT authorization and resolves the active user.
-    
-    Raises:
-        HTTPException 401 if token is missing, invalid, or user does not exist.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
