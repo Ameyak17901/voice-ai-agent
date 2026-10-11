@@ -34,6 +34,7 @@ from .agent_registry import agent_registry
 from backend.actions.appointment_actions import (
     CheckAvailabilityActionConfig,
     BookAppointmentActionConfig,
+    CancelAppointmentActionConfig,
     GetCompanyInfoActionConfig,
 )
 from backend.actions.factory import CustomActionFactory
@@ -41,9 +42,10 @@ from backend.actions.factory import CustomActionFactory
 
 ACTION_INSTRUCTIONS = (
     "Tool Capabilities:\n"
-    "- You have access to real-time tools: 'check_availability', 'book_appointment', and 'get_company_info'.\n"
+    "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', and 'get_company_info'.\n"
     "- When the caller inquires about open times or schedule, call 'check_availability' with the target date.\n"
-    "- When the caller wants to schedule/confirm an appointment and has given their name, date, time, and service, call 'book_appointment'.\n"
+    "- When the caller wants to schedule/confirm an appointment, call 'book_appointment'.\n"
+    "- When the caller wants to cancel an existing booking, ask for their confirmation ID and call 'cancel_appointment'.\n"
     "- When the caller asks about services, company background, hours, or location, call 'get_company_info'.\n"
     "- Never invent fake confirmation IDs or fabricate available slots without calling these tools."
 )
@@ -365,9 +367,11 @@ def create_agent(
     actions = [
         CheckAvailabilityActionConfig(),
         BookAppointmentActionConfig(),
+        CancelAppointmentActionConfig(),
         GetCompanyInfoActionConfig(),
     ]
     action_factory = CustomActionFactory(actions=actions)
+
 
     # 1. Check for user-specific or system Gemini API key
     gemini_key = u_settings.get("gemini_api_key") or settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
