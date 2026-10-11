@@ -168,6 +168,14 @@ async def openai_get_tokens(
         if delta.content is not None:
             token = delta.content
             yield token
+        elif getattr(delta, "tool_calls", None):
+            for tool_call in delta.tool_calls:
+                fn = getattr(tool_call, "function", None)
+                if fn:
+                    yield FunctionFragment(
+                        name=(fn.name if fn.name is not None else ""),
+                        arguments=(fn.arguments if fn.arguments is not None else ""),
+                    )
         elif delta.function_call is not None:
             yield FunctionFragment(
                 name=(delta.function_call.name if delta.function_call.name is not None else ""),

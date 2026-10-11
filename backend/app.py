@@ -48,6 +48,9 @@ from backend.auth import (
     decode_access_token,
     get_current_user,
     get_optional_current_user,
+    issue_token_pair,
+    rotate_refresh_token,
+    revoke_token,
 )
 
 # Enable pretty logging for Vocode streaming events
@@ -262,8 +265,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: Optional[str] = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user: Dict[str, Any]
 
@@ -293,12 +305,13 @@ class BookAppointmentRequest(BaseModel):
 # ==========================================
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(req: RegisterRequest) -> Dict[str, Any]:
-    """Register a new user, initialize isolated settings, and return a JWT access token."""
+    """Register a new user, initialize isolated settings, and return access & refresh token pair."""
     try:
         user = db_repository.create_user(req.email, req.username, req.password)
-        token = create_access_token({"sub": str(user["id"]), "username": user["username"]})
+        access_token, refresh_token = issue_token_pair(user["id"], user["username"])
         return {
-            "access_token": token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": user,
         }
@@ -311,16 +324,44 @@ async def register(req: RegisterRequest) -> Dict[str, Any]:
 
 @app.post("/api/auth/login", response_model=TokenResponse)
 async def login(req: LoginRequest) -> Dict[str, Any]:
-    """Authenticate with email or username and password, returning a JWT access token."""
+    """Authenticate with email or username and password, returning access & refresh token pair."""
     user = db_repository.authenticate_user(req.email_or_username, req.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid email/username or password")
-    token = create_access_token({"sub": str(user["id"]), "username": user["username"]})
+    access_token, refresh_token = issue_token_pair(user["id"], user["username"])
     return {
-        "access_token": token,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": user,
     }
+
+
+@app.post("/api/auth/refresh", response_model=TokenResponse)
+async def refresh_tokens(req: RefreshRequest) -> Dict[str, Any]:
+    """
+    Exchange an existing single-use refresh token for a brand new access and refresh token pair.
+    Implements automatic reuse detection and token family invalidation.
+    """
+    if not req.refresh_token:
+        raise HTTPException(status_code=400, detail="Missing refresh token")
+    new_access_token, new_refresh_token, user = rotate_refresh_token(req.refresh_token)
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "user": user,
+    }
+
+
+@app.post("/api/auth/logout")
+async def logout(req: LogoutRequest, current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user)) -> Dict[str, Any]:
+    """Revoke refresh token and invalidate user session."""
+    if req.refresh_token:
+        revoke_token(req.refresh_token)
+    elif current_user:
+        db_repository.revoke_all_user_tokens(current_user["id"])
+    return {"message": "Successfully logged out"}
 
 
 @app.get("/api/auth/me")

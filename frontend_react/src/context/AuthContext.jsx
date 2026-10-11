@@ -1,5 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { apiGet, apiPost, getStoredToken, setStoredToken } from '../api/client';
+import {
+  apiGet,
+  apiPost,
+  getStoredToken,
+  setStoredToken,
+  setStoredRefreshToken,
+  getStoredRefreshToken,
+  clearAllTokens,
+} from '../api/client';
 
 const AuthContext = createContext(null);
 
@@ -12,26 +20,29 @@ export function AuthProvider({ children }) {
   // Validate stored token against /api/auth/me on initial load
   const checkAuth = useCallback(async () => {
     const existingToken = getStoredToken();
-    if (!existingToken) {
+    const existingRefresh = getStoredRefreshToken();
+
+    if (!existingToken && !existingRefresh) {
       setUser(null);
       setIsLoading(false);
       return;
     }
 
     try {
+      // apiGet automatically triggers silent refresh if existingToken is expired
       const res = await apiGet('/api/auth/me');
       if (res.ok) {
         const userData = await res.json();
         setUser(userData);
+        setToken(getStoredToken());
       } else {
-        // Token invalid or expired
-        setStoredToken(null);
+        clearAllTokens();
         setToken(null);
         setUser(null);
       }
     } catch (err) {
       console.error('[AuthContext] Error validating session:', err);
-      setStoredToken(null);
+      clearAllTokens();
       setToken(null);
       setUser(null);
     } finally {
@@ -47,14 +58,33 @@ export function AuthProvider({ children }) {
       setToken(null);
       setUser(null);
     };
+
+    // Listen for silent background token rotation events
+    const handleRefreshed = (e) => {
+      if (e.detail?.access_token) {
+        setToken(e.detail.access_token);
+      }
+      if (e.detail?.user) {
+        setUser(e.detail.user);
+      }
+    };
+
     window.addEventListener('novavoice:auth_expired', handleExpired);
-    return () => window.removeEventListener('novavoice:auth_expired', handleExpired);
+    window.addEventListener('novavoice:auth_refreshed', handleRefreshed);
+
+    return () => {
+      window.removeEventListener('novavoice:auth_expired', handleExpired);
+      window.removeEventListener('novavoice:auth_refreshed', handleRefreshed);
+    };
   }, [checkAuth]);
 
   const login = async (username, password) => {
     setAuthError(null);
     try {
-      const res = await apiPost('/api/auth/login', { username, password });
+      const res = await apiPost('/api/auth/login', {
+        email_or_username: username,
+        password,
+      });
       const data = await res.json();
       if (!res.ok) {
         const errMsg = data.detail || 'Login failed. Please check credentials.';
@@ -63,6 +93,7 @@ export function AuthProvider({ children }) {
       }
 
       setStoredToken(data.access_token);
+      setStoredRefreshToken(data.refresh_token);
       setToken(data.access_token);
       setUser(data.user);
       return { success: true, user: data.user };
@@ -85,6 +116,7 @@ export function AuthProvider({ children }) {
       }
 
       setStoredToken(data.access_token);
+      setStoredRefreshToken(data.refresh_token);
       setToken(data.access_token);
       setUser(data.user);
       return { success: true, user: data.user };
@@ -95,8 +127,14 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const logout = () => {
-    setStoredToken(null);
+  const logout = async () => {
+    const refreshToken = getStoredRefreshToken();
+    try {
+      await apiPost('/api/auth/logout', { refresh_token: refreshToken });
+    } catch {
+      // Ignore network errors on logout
+    }
+    clearAllTokens();
     setToken(null);
     setUser(null);
     setAuthError(null);

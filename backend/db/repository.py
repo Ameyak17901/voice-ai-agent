@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from loguru import logger
 
 from backend.db.database import SessionLocal, init_db
-from backend.db.models import User, UserSettings, CustomPersona, CallSession, TranscriptItem, Appointment
+from backend.db.models import User, UserSettings, CustomPersona, CallSession, TranscriptItem, Appointment, RefreshToken
 
 # Ensure tables exist
 init_db()
@@ -389,6 +389,78 @@ class DBRepository:
             db.delete(p)
             db.commit()
             return True
+
+    # ==========================================
+    # 6. Refresh Token Rotation & Session Management
+    # ==========================================
+    @staticmethod
+    def store_refresh_token(
+        user_id: int,
+        token_hash: str,
+        family_id: str,
+        expires_at: datetime.datetime,
+    ) -> Dict[str, Any]:
+        """Saves a new active refresh token linked to a token family."""
+        with SessionLocal() as db:
+            rt = RefreshToken(
+                user_id=user_id,
+                token_hash=token_hash,
+                family_id=family_id,
+                expires_at=expires_at,
+                is_revoked=False,
+            )
+            db.add(rt)
+            db.commit()
+            db.refresh(rt)
+            return rt.to_dict()
+
+    @staticmethod
+    def get_refresh_token_by_hash(token_hash: str) -> Optional[Dict[str, Any]]:
+        """Retrieves a refresh token record by its cryptographic hash."""
+        with SessionLocal() as db:
+            rt = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+            return rt.to_dict() if rt else None
+
+    @staticmethod
+    def revoke_refresh_token(token_hash: str) -> bool:
+        """Marks a single refresh token as revoked (consumed during normal rotation)."""
+        with SessionLocal() as db:
+            rt = db.query(RefreshToken).filter(RefreshToken.token_hash == token_hash).first()
+            if not rt:
+                return False
+            rt.is_revoked = True
+            db.commit()
+            return True
+
+    @staticmethod
+    def revoke_token_family(family_id: str) -> int:
+        """
+        Revokes all tokens in a family (invoked during token theft reuse detection or user logout).
+        """
+        with SessionLocal() as db:
+            tokens = db.query(RefreshToken).filter(
+                RefreshToken.family_id == family_id,
+                RefreshToken.is_revoked == False
+            ).all()
+            count = len(tokens)
+            for t in tokens:
+                t.is_revoked = True
+            db.commit()
+            return count
+
+    @staticmethod
+    def revoke_all_user_tokens(user_id: int) -> int:
+        """Revokes all active refresh tokens for a user (e.g., password reset or full sign out)."""
+        with SessionLocal() as db:
+            tokens = db.query(RefreshToken).filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.is_revoked == False
+            ).all()
+            count = len(tokens)
+            for t in tokens:
+                t.is_revoked = True
+            db.commit()
+            return count
 
 
 db_repository = DBRepository()
