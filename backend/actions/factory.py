@@ -11,6 +11,8 @@ from backend.actions.appointment_actions import (
     CheckAvailabilityActionConfig,
     BookAppointmentAction,
     BookAppointmentActionConfig,
+    CancelAppointmentAction,
+    CancelAppointmentActionConfig,
     GetCompanyInfoAction,
     GetCompanyInfoActionConfig,
 )
@@ -18,6 +20,7 @@ from backend.actions.appointment_actions import (
 CUSTOM_ACTIONS: Dict[str, Type[BaseAction]] = {
     "check_availability": CheckAvailabilityAction,
     "book_appointment": BookAppointmentAction,
+    "cancel_appointment": CancelAppointmentAction,
     "get_company_info": GetCompanyInfoAction,
 }
 

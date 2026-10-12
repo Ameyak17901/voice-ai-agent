@@ -5,7 +5,7 @@ from pydantic.v1 import BaseModel, Field
 
 from vocode.streaming.action.base_action import BaseAction
 from vocode.streaming.models.actions import ActionConfig, ActionInput, ActionOutput
-from backend.tools import check_availability, book_appointment, get_company_info
+from backend.tools import check_availability, book_appointment, cancel_appointment, get_company_info
 
 
 # ==========================================
@@ -141,9 +141,67 @@ class BookAppointmentAction(
             response=response,
         )
 
+# ==========================================
+# 3. Cancel Appointment Action
+# ==========================================
+
+class CancelAppointmentActionConfig(ActionConfig, type="cancel_appointment"): #type: ignore
+    pass
+
+class CancelAppointmentParams(BaseModel):
+    appointment_id: str = Field(..., description="The ID of the appointment to cancel.")
+
+class CancelAppointmentResponse(BaseModel):
+    status: str
+    message: str
+
+class CancelAppointmentAction(BaseAction[
+    CancelAppointmentActionConfig,
+    CancelAppointmentParams,
+    CancelAppointmentResponse,
+]):
+    description: str = "Cancels an existing appointment"
+    parameters_type: Type[CancelAppointmentParams] = CancelAppointmentParams
+    response_type: Type[CancelAppointmentResponse] = CancelAppointmentResponse
+
+    def __init__(self, action_config: CancelAppointmentActionConfig):
+
+        super().__init__(
+            action_config=action_config,
+            quiet=False,
+            should_respond="never",
+            is_interruptible=True,
+        )
+
+    def get_function_name(self) -> str:
+        return "cancel_appointment"
+
+    async def run(
+        self, action_input: ActionInput[CancelAppointmentParams]
+    ) -> ActionOutput[CancelAppointmentResponse]:
+        params = action_input.params
+        logger.info(
+            f"[VOICE_ACTION: CANCEL_APPOINTMENT] Attempting to cancel appointment with ID: {params.appointment_id}"
+        )
+        raw_result = cancel_appointment(
+            appointment_id=params.appointment_id,
+            conversation_id=action_input.conversation_id,
+        )
+        response = CancelAppointmentResponse(
+            status=raw_result.get("status", "cancelled"),
+            message=raw_result.get("message", ""),
+        )
+        logger.info(f"[VOICE_ACTION: CANCEL_APPOINTMENT_SUCCESS] Cancelled appointment: {params.appointment_id}")
+        return ActionOutput(
+            action_type=action_input.action_config.type,
+            response=response,
+        )
+
+
+
 
 # ==========================================
-# 3. Get Company Info Action
+# 4. Get Company Info Action
 # ==========================================
 class GetCompanyInfoActionConfig(ActionConfig, type="get_company_info"):  # type: ignore
     pass

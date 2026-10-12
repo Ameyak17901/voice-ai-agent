@@ -115,6 +115,27 @@ def book_appointment(
         "appointment": appt,
     }
 
+def cancel_appointment(
+    appointment_id: str,
+    conversation_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Cancels a scheduled appointment and updates persistent storage."""
+    result = db_repository.cancel_appointment(appointment_id, user_id=user_id)
+    if not result:
+        return {
+            "status": "not_found",
+            "message": f"Appointment with ID '{appointment_id}' was not found or could not be cancelled.",
+            "appointment": None,
+        }
+    return {
+        "status": "cancelled",
+        "message": f"Appointment '{appointment_id}' has been successfully cancelled.",
+        "appointment": result,
+    }
+
+
+
 
 def get_company_info() -> Dict[str, Any]:
     """Returns basic company knowledge base details."""

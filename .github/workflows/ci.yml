@@ -1,0 +1,61 @@
+name: CI Test Suite & Code Quality
+
+on:
+  push:
+    branches: [ main, develop, "improvements/**", "feature/**" ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pytest & Linting (Python 3.11)
+    runs-on: ubuntu-latest
+
+    env:
+      # Ephemeral dummy secrets for hermetic automated tests
+      JWT_SECRET_KEY: "ci-secret-key-for-automated-testing-purposes"
+      DEEPGRAM_API_KEY: "dummy_deepgram_key_for_testing"
+      OPENAI_API_KEY: "dummy_openai_key_for_testing"
+      GEMINI_API_KEY: "dummy_gemini_key_for_testing"
+      DATABASE_URL: "sqlite:///./test_app.db"
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.3"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          installer-parallel: true
+
+      - name: Cache Poetry Virtual Environment
+        uses: actions/cache@v4
+        id: cached-poetry-dependencies
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install Project Dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install Project Root
+        run: poetry install --no-interaction
+
+      - name: Verify Backend Server Initialization
+        run: poetry run python run.py --test
+
+      - name: Run Pytest Test Suite
+        run: poetry run pytest -v --tb=short

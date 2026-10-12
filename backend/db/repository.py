@@ -298,6 +298,35 @@ class DBRepository:
             db.commit()
             db.refresh(appt)
             return appt.to_dict()
+    
+    @staticmethod
+    def get_appointment_by_id(appointment_id: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Retrieves an appointment by ID with optional tenant user isolation."""
+        with SessionLocal() as db:
+            query = db.query(Appointment).filter(Appointment.id == appointment_id)
+            if user_id is not None:
+                query = query.filter(Appointment.user_id == user_id)
+            appt = query.first()
+            return appt.to_dict() if appt else None
+
+    @staticmethod
+    def cancel_appointment(appointment_id: str, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Cancels an existing appointment transactionally with tenant scoping."""
+        with SessionLocal() as db:
+            query = db.query(Appointment).filter(Appointment.id == appointment_id)
+            if user_id is not None:
+                query = query.filter(Appointment.user_id == user_id)
+            appt = query.first()
+            if not appt:
+                logger.warning(f"Appointment with ID '{appointment_id}' not found for cancellation.")
+                return None
+
+            appt.status = "cancelled"
+            db.commit()
+            db.refresh(appt)
+            logger.info(f"Successfully cancelled appointment '{appointment_id}' in database.")
+            return appt.to_dict()
+
 
     @staticmethod
     def list_appointments(user_id: Optional[int] = None) -> List[Dict[str, Any]]:
