@@ -112,3 +112,61 @@ def test_user_agent_construction(isolated_db):
     if hasattr(agent_u1, "agent_config"):
         assert agent_u1.agent_config.model_name == "gpt-4o-custom-user1"
         assert agent_u2.agent_config.model_name == "gemini-2.0-custom-user2"
+
+
+def test_websocket_unauthenticated_connection_rejected(isolated_db):
+    """Verify that connecting to /conversation without a valid JWT token is rejected with policy violation (1008)."""
+    from fastapi.testclient import TestClient
+    from fastapi import WebSocketDisconnect
+    from backend.app import app
+
+    client = TestClient(app)
+
+    # 1. No token at all
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/conversation"):
+            pass
+    assert exc_info.value.code == 1008
+
+    # 2. Invalid / bogus token
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/conversation?token=bogus_invalid_jwt"):
+            pass
+    assert exc_info.value.code == 1008
+
+
+def test_websocket_authenticated_connection_accepted(isolated_db, sample_user):
+    """Verify that connecting with a valid token successfully authenticates and accepts WebSocket handshake."""
+    from fastapi.testclient import TestClient
+    from backend.app import app
+
+    client = TestClient(app)
+    token = create_access_token({"sub": str(sample_user["id"]), "username": sample_user["username"]})
+
+    with client.websocket_connect(f"/conversation?token={token}") as ws:
+        # Send valid AudioConfigStartMessage
+        ws.send_json({
+            "type": "websocket_audio_config_start",
+            "input_audio_config": {
+                "sampling_rate": 16000,
+                "audio_encoding": "linear16",
+                "chunk_size": 2048,
+            },
+            "output_audio_config": {
+                "sampling_rate": 16000,
+                "audio_encoding": "linear16",
+            },
+            "conversation_id": "test_conv_auth_gate",
+            "subscribe_transcript": True,
+        })
+        msg = ws.receive_json()
+        assert msg["type"] == "websocket_ready"
+
+        # Send STOP signal
+        ws.send_json({"type": "websocket_stop"})
+
+    # Verify call session was created in DB and strictly bound to user_id
+    call = db_repository.get_call_session("test_conv_auth_gate")
+    assert call is not None
+    assert call["user_id"] == sample_user["id"]
+

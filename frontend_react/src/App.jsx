@@ -125,9 +125,14 @@ function AppContent() {
     if (isConnected) {
       stopSession();
     } else {
+      if (!isAuthenticated) {
+        setIsAuthOpen(true);
+        return;
+      }
       startSession(persona);
     }
   };
+
 
   return (
     <div className="app-wrapper">
