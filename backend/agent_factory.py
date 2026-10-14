@@ -1,4 +1,10 @@
 import os
+import json
+import datetime
+try:
+    import zoneinfo
+except ImportError:
+    zoneinfo = None
 from typing import AsyncGenerator, Callable, Dict, Tuple, Optional, Any, List
 from loguru import logger
 
@@ -40,11 +46,56 @@ from backend.actions.appointment_actions import (
 from backend.actions.factory import CustomActionFactory
 
 
+def get_temporal_grounding_instruction(
+    user_timezone: Optional[str] = None,
+    current_time: Optional[datetime.datetime] = None,
+) -> str:
+    """
+    Constructs dynamic temporal grounding instructions to give LLMs real-time awareness
+    of the current live date, weekday, and year, preventing hallucinations and relative date drift.
+    """
+    now = current_time
+    tz_label = "UTC"
+
+    if now is None:
+        if user_timezone and zoneinfo:
+            try:
+                tz = zoneinfo.ZoneInfo(user_timezone)
+                now = datetime.datetime.now(tz)
+                tz_label = user_timezone
+            except Exception:
+                now = datetime.datetime.now().astimezone()
+                tz_label = str(now.tzname() or "Local")
+        else:
+            now = datetime.datetime.now().astimezone()
+            tz_label = str(now.tzname() or "Local")
+    else:
+        tz_label = user_timezone or "Custom"
+
+    date_str = now.strftime("%A, %B %d, %Y")
+    iso_date = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%I:%M %p")
+
+    return (
+        "Temporal Grounding:\n"
+        f"- Current Reference Date: {date_str} (ISO-8601: {iso_date}).\n"
+        f"- Current Reference Time: {time_str} ({tz_label}).\n"
+        "- When callers mention relative dates (e.g. 'today', 'tomorrow', 'this Friday', 'next Monday'), "
+        f"resolve and pass the standard date format (YYYY-MM-DD or relative keyword like 'today' or 'tomorrow').\n"
+        "- When callers specify appointment times, always format them as standard 12-hour slots with AM/PM "
+        "(e.g., '09:00 AM', '11:00 AM', '02:00 PM', '04:30 PM')."
+    )
+
+
 ACTION_INSTRUCTIONS = (
-    "Tool Capabilities:\n"
+    "Tool Capabilities & Latency Masking:\n"
     "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', and 'get_company_info'.\n"
-    "- When the caller inquires about open times or schedule, call 'check_availability' with the target date.\n"
-    "- When the caller wants to schedule/confirm an appointment, call 'book_appointment'.\n"
+    "- Latency Masking Protocol: When calling any tool, ALWAYS include a 'user_message' parameter containing a brief (1 short sentence) verbal pre-roll spoken immediately to the caller while the action executes in the background:\n"
+    "  * For 'check_availability': 'Let me check our calendar availability for that date right now...'\n"
+    "  * For 'book_appointment': 'Just a moment while I confirm that appointment slot for you...'\n"
+    "  * For 'cancel_appointment': 'Looking up that confirmation to cancel it for you now...'\n"
+    "- When the caller inquires about open times or schedule, call 'check_availability' with the target date (e.g. 'YYYY-MM-DD', 'today', or 'tomorrow').\n"
+    "- When the caller wants to schedule/confirm an appointment, call 'book_appointment' with name, date (YYYY-MM-DD), time (HH:MM AM/PM), and service.\n"
     "- When the caller wants to cancel an existing booking, ask for their confirmation ID and call 'cancel_appointment'.\n"
     "- When the caller asks about services, company background, hours, or location, call 'get_company_info'.\n"
     "- Never invent fake confirmation IDs or fabricate available slots without calling these tools."
@@ -339,6 +390,47 @@ class ResilientChatGPTAgent(ChatGPTAgent):
             ):
                 yield resp
 
+    async def call_function(self, function_call, agent_input):
+        """
+        Intercepts function calls to guarantee latency-masking acoustic pre-roll (user_message).
+        If the LLM omits user_message or passes empty string, a persona-tailored filler is injected
+        so the caller hears immediate confirmation while Cal.com / tools run in parallel.
+        """
+        try:
+            raw_args = json.loads(function_call.arguments or "{}")
+            if not raw_args.get("user_message") or not str(raw_args.get("user_message")).strip():
+                fn_name = function_call.name
+                persona = getattr(self.fallback_agent, "persona", "concierge")
+                fallback_fillers = {
+                    "check_availability": {
+                        "concierge": "Let me check our calendar availability for you right now...",
+                        "receptionist": "One moment, let me check Dr. Smith's calendar for available times...",
+                        "school_receptionist": "Let me pull up our school schedule for that date...",
+                    },
+                    "book_appointment": {
+                        "concierge": "Securing that appointment slot for you right now...",
+                        "receptionist": "Just a moment while I confirm your appointment on the schedule...",
+                        "school_receptionist": "Reserving that tour slot on our calendar now...",
+                    },
+                    "cancel_appointment": {
+                        "concierge": "Looking up that confirmation to cancel it for you...",
+                        "receptionist": "Checking your appointment details to process the cancellation...",
+                        "school_receptionist": "Processing that cancellation on our schedule for you now...",
+                    },
+                }
+                filler = (
+                    fallback_fillers.get(fn_name, {}).get(persona)
+                    or fallback_fillers.get(fn_name, {}).get("concierge")
+                    or "One moment please, let me check that for you..."
+                )
+                raw_args["user_message"] = filler
+                function_call.arguments = json.dumps(raw_args)
+                logger.info(f"[LATENCY_MASKING] Injected pre-roll user_message for '{fn_name}': '{filler}'")
+        except Exception as exc:
+            logger.debug(f"[LATENCY_MASKING] Error inspecting user_message: {exc}")
+
+        return await super().call_function(function_call, agent_input)
+
 
 def create_agent(
     persona_key: Optional[str] = None,
@@ -354,6 +446,10 @@ def create_agent(
         prompt_preamble = f"{prompt_preamble}\n\n{CLOSURE_INSTRUCTION}"
     if "Tool Capabilities" not in prompt_preamble:
         prompt_preamble = f"{prompt_preamble}\n\n{ACTION_INSTRUCTIONS}"
+    if "Temporal Grounding" not in prompt_preamble:
+        user_tz = u_settings.get("timezone") or getattr(settings, "default_timezone", "UTC")
+        temporal_instructions = get_temporal_grounding_instruction(user_timezone=user_tz)
+        prompt_preamble = f"{prompt_preamble}\n\n{temporal_instructions}"
 
     initial_text = persona_obj.initial_message if persona_obj else PERSONA_INITIAL_MESSAGE.get(persona, PERSONA_INITIAL_MESSAGE["concierge"])
     fallback_agent = SmartFallbackAgent(persona=persona, initial_message=initial_text)

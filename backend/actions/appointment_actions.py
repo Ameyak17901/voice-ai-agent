@@ -5,7 +5,15 @@ from pydantic.v1 import BaseModel, Field
 
 from vocode.streaming.action.base_action import BaseAction
 from vocode.streaming.models.actions import ActionConfig, ActionInput, ActionOutput
-from backend.tools import check_availability, book_appointment, cancel_appointment, get_company_info
+from backend.tools import (
+    check_availability,
+    check_availability_async,
+    book_appointment,
+    book_appointment_async,
+    cancel_appointment,
+    cancel_appointment_async,
+    get_company_info,
+)
 
 
 # ==========================================
@@ -25,6 +33,7 @@ class CheckAvailabilityParams(BaseModel):
 class CheckAvailabilityResponse(BaseModel):
     status: str
     date: str
+    normalized_date: Optional[str] = None
     available_slots: List[str]
     message: str
 
@@ -44,7 +53,7 @@ class CheckAvailabilityAction(
         super().__init__(
             action_config=action_config,
             quiet=False,
-            should_respond="never",
+            should_respond="always",
             is_interruptible=True,
         )
 
@@ -56,10 +65,11 @@ class CheckAvailabilityAction(
     ) -> ActionOutput[CheckAvailabilityResponse]:
         date = action_input.params.date or "today"
         logger.info(f"[VOICE_ACTION: CHECK_AVAILABILITY] Querying available slots for date='{date}'")
-        raw_result = check_availability(date=date)
+        raw_result = await check_availability_async(date=date)
         response = CheckAvailabilityResponse(
             status=raw_result.get("status", "success"),
             date=raw_result.get("date", date),
+            normalized_date=raw_result.get("normalized_date"),
             available_slots=raw_result.get("available_slots", []),
             message=raw_result.get("message", ""),
         )
@@ -108,7 +118,7 @@ class BookAppointmentAction(
         super().__init__(
             action_config=action_config,
             quiet=False,
-            should_respond="never",
+            should_respond="always",
             is_interruptible=True,
         )
 
@@ -123,7 +133,7 @@ class BookAppointmentAction(
             f"[VOICE_ACTION: BOOK_APPOINTMENT] Attempting booking for name='{params.name}', "
             f"date='{params.date}', time='{params.time}', service='{params.service}'"
         )
-        raw_result = book_appointment(
+        raw_result = await book_appointment_async(
             name=params.name,
             date=params.date,
             time=params.time,
@@ -169,7 +179,7 @@ class CancelAppointmentAction(BaseAction[
         super().__init__(
             action_config=action_config,
             quiet=False,
-            should_respond="never",
+            should_respond="always",
             is_interruptible=True,
         )
 
@@ -183,7 +193,7 @@ class CancelAppointmentAction(BaseAction[
         logger.info(
             f"[VOICE_ACTION: CANCEL_APPOINTMENT] Attempting to cancel appointment with ID: {params.appointment_id}"
         )
-        raw_result = cancel_appointment(
+        raw_result = await cancel_appointment_async(
             appointment_id=params.appointment_id,
             conversation_id=action_input.conversation_id,
         )
