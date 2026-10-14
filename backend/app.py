@@ -5,13 +5,15 @@ from pathlib import Path
 # In-memory miniaudio is used for decoding; suppress legacy pydub binary scan warning
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pydub.*")
 import typing
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
+import time
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from loguru import logger
+
 
 from vocode.logging import configure_pretty_logging
 from vocode.streaming.client_backend.conversation import ConversationRouter, TranscriptEventManager
@@ -145,17 +147,35 @@ class CustomizableConversationRouter(ConversationRouter):
         user_id: Optional[int] = None
         user_settings: Optional[Dict[str, Any]] = None
 
-        if token:
-            payload = decode_access_token(token)
-            if payload and "sub" in payload:
-                try:
-                    user_id = int(payload["sub"])
-                    user_settings = db_repository.get_user_credentials(user_id)
-                    logger.info(f"[WS_AUTH] Authenticated WebSocket session for user_id={user_id} (persona='{persona}').")
-                except Exception as ex:
-                    logger.warning(f"[WS_AUTH] Failed to resolve user credentials from token: {ex}")
+        # 1. Enforce strict mandatory authentication for voice calls
+        if not token:
+            logger.warning("[WS_AUTH] Rejected unauthenticated connection attempt: No token provided.")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Authentication required to start call.")
+            return
+
+        payload = decode_access_token(token)
+        if not payload or "sub" not in payload:
+            logger.warning("[WS_AUTH] Rejected connection: Invalid or expired authentication token.")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or expired authentication token.")
+            return
+
+        try:
+            user_id = int(payload["sub"])
+            user_record = db_repository.get_user_by_id(user_id)
+            if not user_record or not user_record.get("is_active", True):
+                logger.warning(f"[WS_AUTH] Rejected connection: User ID {user_id} not found or account is deactivated.")
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="User account not found or deactivated.")
+                return
+
+            user_settings = db_repository.get_user_credentials(user_id)
+            logger.info(f"[WS_AUTH] Authenticated WebSocket session for user '{user_record['username']}' (id={user_id}, persona='{persona}').")
+        except Exception as ex:
+            logger.error(f"[WS_AUTH] Unexpected error verifying user credentials: {ex}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Failed to verify user credentials.")
+            return
 
         await websocket.accept()
+
         try:
             start_message: AudioConfigStartMessage = AudioConfigStartMessage.parse_obj(
                 await websocket.receive_json()
@@ -196,10 +216,20 @@ class CustomizableConversationRouter(ConversationRouter):
 
         audio_chunks_count = 0
         total_audio_bytes = 0
+        session_start_time = time.time()
+        has_byok_keys = bool(user_settings and (user_settings.get("gemini_api_key") or user_settings.get("openai_api_key")))
+        max_duration_seconds = float(os.getenv("MAX_CALL_DURATION_SECONDS", "3600" if has_byok_keys else "180"))
+
         try:
             while conversation.is_active():
+                # Enforce call duration circuit-breaker
+                if time.time() - session_start_time > max_duration_seconds:
+                    logger.info(f"[CALL_LIMIT] Max call duration ({max_duration_seconds}s) reached for user_id={user_id}. Concluding call gracefully.")
+                    break
+
                 try:
                     message: WebSocketMessage = WebSocketMessage.parse_obj(await websocket.receive_json())
+
                 except (WebSocketDisconnect, RuntimeError):
                     logger.info("Client disconnected gracefully.")
                     break
