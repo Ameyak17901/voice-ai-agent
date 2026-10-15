@@ -1,4 +1,9 @@
 import os
+import datetime
+try:
+    import zoneinfo
+except ImportError:
+    zoneinfo = None
 from typing import AsyncGenerator, Callable, Dict, Tuple, Optional, Any, List
 from loguru import logger
 
@@ -40,11 +45,52 @@ from backend.actions.appointment_actions import (
 from backend.actions.factory import CustomActionFactory
 
 
+def get_temporal_grounding_instruction(
+    user_timezone: Optional[str] = None,
+    current_time: Optional[datetime.datetime] = None,
+) -> str:
+    """
+    Constructs dynamic temporal grounding instructions to give LLMs real-time awareness
+    of the current live date, weekday, and year, preventing hallucinations and relative date drift.
+    """
+    now = current_time
+    tz_label = "UTC"
+
+    if now is None:
+        if user_timezone and zoneinfo:
+            try:
+                tz = zoneinfo.ZoneInfo(user_timezone)
+                now = datetime.datetime.now(tz)
+                tz_label = user_timezone
+            except Exception:
+                now = datetime.datetime.now().astimezone()
+                tz_label = str(now.tzname() or "Local")
+        else:
+            now = datetime.datetime.now().astimezone()
+            tz_label = str(now.tzname() or "Local")
+    else:
+        tz_label = user_timezone or "Custom"
+
+    date_str = now.strftime("%A, %B %d, %Y")
+    iso_date = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%I:%M %p")
+
+    return (
+        "Temporal Grounding:\n"
+        f"- Current Reference Date: {date_str} (ISO-8601: {iso_date}).\n"
+        f"- Current Reference Time: {time_str} ({tz_label}).\n"
+        "- When callers mention relative dates (e.g. 'today', 'tomorrow', 'this Friday', 'next Monday'), "
+        f"resolve and pass the standard date format (YYYY-MM-DD or relative keyword like 'today' or 'tomorrow').\n"
+        "- When callers specify appointment times, always format them as standard 12-hour slots with AM/PM "
+        "(e.g., '09:00 AM', '11:00 AM', '02:00 PM', '04:30 PM')."
+    )
+
+
 ACTION_INSTRUCTIONS = (
     "Tool Capabilities:\n"
     "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', and 'get_company_info'.\n"
-    "- When the caller inquires about open times or schedule, call 'check_availability' with the target date.\n"
-    "- When the caller wants to schedule/confirm an appointment, call 'book_appointment'.\n"
+    "- When the caller inquires about open times or schedule, call 'check_availability' with the target date (e.g. 'YYYY-MM-DD', 'today', or 'tomorrow').\n"
+    "- When the caller wants to schedule/confirm an appointment, call 'book_appointment' with name, date (YYYY-MM-DD), time (HH:MM AM/PM), and service.\n"
     "- When the caller wants to cancel an existing booking, ask for their confirmation ID and call 'cancel_appointment'.\n"
     "- When the caller asks about services, company background, hours, or location, call 'get_company_info'.\n"
     "- Never invent fake confirmation IDs or fabricate available slots without calling these tools."
@@ -354,6 +400,10 @@ def create_agent(
         prompt_preamble = f"{prompt_preamble}\n\n{CLOSURE_INSTRUCTION}"
     if "Tool Capabilities" not in prompt_preamble:
         prompt_preamble = f"{prompt_preamble}\n\n{ACTION_INSTRUCTIONS}"
+    if "Temporal Grounding" not in prompt_preamble:
+        user_tz = u_settings.get("timezone") or getattr(settings, "default_timezone", "UTC")
+        temporal_instructions = get_temporal_grounding_instruction(user_timezone=user_tz)
+        prompt_preamble = f"{prompt_preamble}\n\n{temporal_instructions}"
 
     initial_text = persona_obj.initial_message if persona_obj else PERSONA_INITIAL_MESSAGE.get(persona, PERSONA_INITIAL_MESSAGE["concierge"])
     fallback_agent = SmartFallbackAgent(persona=persona, initial_message=initial_text)

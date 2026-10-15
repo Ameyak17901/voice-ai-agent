@@ -25,6 +25,7 @@ class CheckAvailabilityParams(BaseModel):
 class CheckAvailabilityResponse(BaseModel):
     status: str
     date: str
+    normalized_date: Optional[str] = None
     available_slots: List[str]
     message: str
 
@@ -60,6 +61,7 @@ class CheckAvailabilityAction(
         response = CheckAvailabilityResponse(
             status=raw_result.get("status", "success"),
             date=raw_result.get("date", date),
+            normalized_date=raw_result.get("normalized_date"),
             available_slots=raw_result.get("available_slots", []),
             message=raw_result.get("message", ""),
         )

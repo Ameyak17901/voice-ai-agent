@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # Agent Persona & Idle Watching Settings
     default_persona: str = "concierge"
+    default_timezone: str = "UTC"
     allowed_idle_time_seconds: float = 12.0
     num_check_human_present_times: int = 2
     # Allowed CORS Origins (comma-separated or * for wildcard)
