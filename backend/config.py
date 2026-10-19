@@ -37,8 +37,18 @@ class Settings(BaseSettings):
 
     # Agent Persona & Idle Watching Settings
     default_persona: str = "concierge"
+    default_timezone: str = "UTC"
     allowed_idle_time_seconds: float = 12.0
     num_check_human_present_times: int = 2
+
+    # Cal.com API v2 Settings
+    cal_com_api_key: Optional[str] = None
+    cal_com_event_type_id: Optional[int] = None
+    cal_com_username: Optional[str] = None
+    cal_com_event_slug: Optional[str] = "30min"
+    cal_com_base_url: str = "https://api.cal.com/v2"
+    cal_com_api_version: str = "2024-08-13"
+
     # Allowed CORS Origins (comma-separated or * for wildcard)
     allowed_origins: str = "*"
 
@@ -89,6 +99,16 @@ class Settings(BaseSettings):
             or os.getenv("GEMINI_API_KEY")
             or os.getenv("OPENAI_API_KEY")
         )
+
+    @property
+    def has_calcom_creds(self) -> bool:
+        api_key = self.cal_com_api_key or os.getenv("CAL_COM_API_KEY")
+        has_target = bool(
+            self.cal_com_event_type_id
+            or os.getenv("CAL_COM_EVENT_TYPE_ID")
+            or (self.cal_com_username or os.getenv("CAL_COM_USERNAME"))
+        )
+        return bool(api_key and has_target)
 
 
 settings = Settings()
