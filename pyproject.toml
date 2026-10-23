@@ -44,6 +44,8 @@ loguru = ">=0.7.2"
 
 # Local Vocode Core SDK dependency
 vocode = { path = "./vocode-core", develop = true }
+chromadb = "^1.5.9"
+pypdf = "^6.21.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"

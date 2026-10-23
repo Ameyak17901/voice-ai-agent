@@ -35,6 +35,13 @@ export default function DiagnosticsCard({ systemStatus, activePersona }) {
         </div>
 
         <div className="diag-item">
+          <span className="diag-title">Knowledge Base (RAG)</span>
+          <span className="diag-badge badge-success" title="ChromaDB Vector Store + Gemini Embeddings">
+            ChromaDB (Active)
+          </span>
+        </div>
+
+        <div className="diag-item">
           <span className="diag-title">Active Persona</span>
           <span
             className="diag-badge badge-success"

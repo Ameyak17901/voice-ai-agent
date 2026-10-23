@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     cal_com_base_url: str = "https://api.cal.com/v2"
     cal_com_api_version: str = "2024-08-13"
 
+    # RAG & ChromaDB Settings
+    chroma_persist_directory: str = "backend/data/chroma"
+    rag_documents_directory: str = "backend/data/documents"
+    gemini_embedding_model: str = "text-embedding-004"
+    rag_max_retrieval_chunks: int = 3
+    rag_similarity_threshold: float = 0.3
+    rag_chunk_size: int = 500
+    rag_chunk_overlap: int = 60
+
     # Allowed CORS Origins (comma-separated or * for wildcard)
     allowed_origins: str = "*"
 

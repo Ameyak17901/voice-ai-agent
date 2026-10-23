@@ -9,6 +9,7 @@ import DiagnosticsCard from './components/DiagnosticsCard';
 import AgentBuilderModal from './components/AgentBuilderModal';
 import AuthModal from './components/AuthModal';
 import CallHistoryModal from './components/CallHistoryModal';
+import KnowledgeBaseModal from './components/KnowledgeBaseModal';
 import SettingsModal from './components/SettingsModal';
 import { useVocodeVoice } from './hooks/useVocodeVoice';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -39,6 +40,7 @@ function AppContent() {
   const [isAgentBuilderOpen, setIsAgentBuilderOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isKnowledgeOpen, setIsKnowledgeOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(null);
 
@@ -147,6 +149,7 @@ function AppContent() {
         isHearingUser={Boolean(interimTranscript)}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenKnowledge={() => setIsKnowledgeOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
@@ -218,6 +221,13 @@ function AppContent() {
       <CallHistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+      />
+
+      <KnowledgeBaseModal
+        isOpen={isKnowledgeOpen}
+        onClose={() => setIsKnowledgeOpen(false)}
+        personas={personas}
+        currentPersona={persona}
       />
 
       <SettingsModal

@@ -6,12 +6,12 @@ from pathlib import Path
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="pydub.*")
 import typing
 import time
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any, Union
 from loguru import logger
 
 
@@ -54,6 +54,7 @@ from backend.auth import (
     rotate_refresh_token,
     revoke_token,
 )
+from backend.rag.service import rag_service
 
 # Enable pretty logging for Vocode streaming events
 configure_pretty_logging()
@@ -632,6 +633,158 @@ async def get_call_details(
     if not session_data:
         raise HTTPException(status_code=404, detail="Call session not found")
     return session_data
+
+
+# ==========================================
+# 7. Knowledge Base (RAG) Endpoints
+# ==========================================
+class IngestRawTextRequest(BaseModel):
+    title: str = Field(..., description="Document title")
+    text: str = Field(..., description="Raw text content to chunk and index")
+    persona_id: str = Field(default="concierge", description="Target persona")
+
+
+class IngestMCQRequest(BaseModel):
+    title: str = Field(..., description="Document title for MCQ collection")
+    mcqs: Union[str, List[Dict[str, Any]]] = Field(
+        ...,
+        description="Raw formatted MCQ text or list of structured MCQ dicts",
+    )
+    persona_id: str = Field(default="concierge", description="Target persona")
+
+
+class QueryKnowledgeRequest(BaseModel):
+    query: str = Field(..., description="Query text to search")
+    persona_id: Optional[str] = None
+    top_k: int = 3
+    threshold: float = 0.5
+
+
+@app.post("/api/knowledge/raw-text")
+async def ingest_raw_text(
+    req: IngestRawTextRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> Dict[str, Any]:
+    """Ingests raw text or FAQ snippets into the RAG vector store."""
+    user_id = current_user["id"] if current_user else 0
+    result = await rag_service.ingest_raw_text(
+        text=req.text,
+        title=req.title,
+        user_id=user_id,
+        persona_id=req.persona_id,
+    )
+    return {"status": "success", "result": result}
+
+
+@app.post("/api/knowledge/mcq")
+async def ingest_mcqs(
+    req: IngestMCQRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> Dict[str, Any]:
+    """Ingests Multiple Choice Questions as atomic semantic units."""
+    user_id = current_user["id"] if current_user else 0
+    result = await rag_service.ingest_mcqs(
+        mcqs=req.mcqs,
+        title=req.title,
+        user_id=user_id,
+        persona_id=req.persona_id,
+    )
+    return {"status": "success", "result": result}
+
+
+@app.post("/api/knowledge/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    persona_id: str = Form(default="concierge"),
+    title: Optional[str] = Form(default=None),
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> Dict[str, Any]:
+    """Uploads and parses PDF, Markdown, or Text documents into the RAG store."""
+    user_id = current_user["id"] if current_user else 0
+    filename = file.filename or "uploaded_document"
+    doc_title = title or filename
+    content_bytes = await file.read()
+
+    lower_name = filename.lower()
+    if lower_name.endswith(".pdf"):
+        result = await rag_service.ingest_pdf(
+            pdf_source=content_bytes,
+            title=doc_title,
+            user_id=user_id,
+            persona_id=persona_id,
+        )
+    elif lower_name.endswith(".md"):
+        text_content = content_bytes.decode("utf-8", errors="replace")
+        result = await rag_service.ingest_markdown(
+            markdown_text=text_content,
+            title=doc_title,
+            user_id=user_id,
+            persona_id=persona_id,
+        )
+    elif lower_name.endswith(".txt"):
+        text_content = content_bytes.decode("utf-8", errors="replace")
+        result = await rag_service.ingest_raw_text(
+            text=text_content,
+            title=doc_title,
+            user_id=user_id,
+            persona_id=persona_id,
+        )
+    else:
+        # Default try as utf-8 text
+        try:
+            text_content = content_bytes.decode("utf-8")
+            result = await rag_service.ingest_raw_text(
+                text=text_content,
+                title=doc_title,
+                user_id=user_id,
+                persona_id=persona_id,
+            )
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported file format. Please upload .pdf, .md, or .txt files.",
+            )
+
+    return {"status": "success", "filename": filename, "result": result}
+
+
+@app.get("/api/knowledge/documents")
+async def list_documents(
+    persona_id: Optional[str] = None,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> List[Dict[str, Any]]:
+    """Lists ingested knowledge documents scoped to the active tenant/user."""
+    user_id = current_user["id"] if current_user else None
+    return rag_service.list_documents(user_id=user_id, persona_id=persona_id)
+
+
+@app.delete("/api/knowledge/documents/{document_id}")
+async def delete_document(
+    document_id: str,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> Dict[str, Any]:
+    """Deletes an ingested document and its vector embeddings from ChromaDB."""
+    user_id = current_user["id"] if current_user else None
+    deleted = rag_service.delete_document(document_id=document_id, user_id=user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Document not found or already deleted")
+    return {"status": "deleted", "document_id": document_id}
+
+
+@app.post("/api/knowledge/query")
+async def query_knowledge(
+    req: QueryKnowledgeRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_current_user),
+) -> Dict[str, Any]:
+    """Tests semantic retrieval against the ChromaDB vector store."""
+    user_id = current_user["id"] if current_user else None
+    return await rag_service.query_knowledge(
+        query=req.query,
+        user_id=user_id,
+        persona_id=req.persona_id,
+        top_k=req.top_k,
+        threshold=req.threshold,
+    )
 
 
 # Mount Frontend (Prioritize React build in frontend_react/dist, fallback to static frontend)

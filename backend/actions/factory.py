@@ -16,12 +16,17 @@ from backend.actions.appointment_actions import (
     GetCompanyInfoAction,
     GetCompanyInfoActionConfig,
 )
+from backend.actions.knowledge_actions import (
+    QueryKnowledgeBaseAction,
+    QueryKnowledgeBaseActionConfig,
+)
 
 CUSTOM_ACTIONS: Dict[str, Type[BaseAction]] = {
     "check_availability": CheckAvailabilityAction,
     "book_appointment": BookAppointmentAction,
     "cancel_appointment": CancelAppointmentAction,
     "get_company_info": GetCompanyInfoAction,
+    "query_knowledge_base": QueryKnowledgeBaseAction,
 }
 
 

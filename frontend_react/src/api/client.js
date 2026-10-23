@@ -67,9 +67,15 @@ export async function apiRequest(endpoint, options = {}, isRetry = false) {
   const token = getStoredToken();
 
   const headers = {
-    'Content-Type': 'application/json',
     ...(options.headers || {}),
   };
+
+  // Only set Content-Type to application/json if not uploading FormData
+  if (!(options.body instanceof FormData)) {
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -130,4 +136,11 @@ export async function apiPost(endpoint, body) {
 
 export async function apiDelete(endpoint) {
   return apiRequest(endpoint, { method: 'DELETE' });
+}
+
+export async function apiUpload(endpoint, formData) {
+  return apiRequest(endpoint, {
+    method: 'POST',
+    body: formData,
+  });
 }

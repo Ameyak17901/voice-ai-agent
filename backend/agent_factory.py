@@ -43,6 +43,7 @@ from backend.actions.appointment_actions import (
     CancelAppointmentActionConfig,
     GetCompanyInfoActionConfig,
 )
+from backend.actions.knowledge_actions import QueryKnowledgeBaseActionConfig
 from backend.actions.factory import CustomActionFactory
 
 
@@ -89,11 +90,14 @@ def get_temporal_grounding_instruction(
 
 ACTION_INSTRUCTIONS = (
     "Tool Capabilities & Latency Masking:\n"
-    "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', and 'get_company_info'.\n"
+    "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', 'get_company_info', and 'query_knowledge_base'.\n"
     "- Latency Masking Protocol: When calling any tool, ALWAYS include a 'user_message' parameter containing a brief (1 short sentence) verbal pre-roll spoken immediately to the caller while the action executes in the background:\n"
     "  * For 'check_availability': 'Let me check our calendar availability for that date right now...'\n"
     "  * For 'book_appointment': 'Just a moment while I confirm that appointment slot for you...'\n"
     "  * For 'cancel_appointment': 'Looking up that confirmation to cancel it for you now...'\n"
+    "  * For 'query_knowledge_base': 'Let me look that up in our knowledge base for you...'\n"
+    "- When the caller asks questions about company policies, FAQs, procedures, school handbook, clinic rules, pricing, or background details, call 'query_knowledge_base'.\n"
+    "- Acoustic Distillation Rule: When receiving knowledge base context, synthesize it into 1 to 2 spoken sentences. Never read citation brackets, URLs, or markdown bullet points.\n"
     "- When the caller inquires about open times or schedule, call 'check_availability' with the target date (e.g. 'YYYY-MM-DD', 'today', or 'tomorrow').\n"
     "- When the caller wants to schedule/confirm an appointment, call 'book_appointment' with name, date (YYYY-MM-DD), time (HH:MM AM/PM), and service.\n"
     "- When the caller wants to cancel an existing booking, ask for their confirmation ID and call 'cancel_appointment'.\n"
@@ -417,6 +421,12 @@ class ResilientChatGPTAgent(ChatGPTAgent):
                         "receptionist": "Checking your appointment details to process the cancellation...",
                         "school_receptionist": "Processing that cancellation on our schedule for you now...",
                     },
+                    "query_knowledge_base": {
+                        "concierge": "Let me look that up in our system knowledge base for you...",
+                        "receptionist": "One moment, let me check our clinic guidelines on that for you...",
+                        "school_receptionist": "Let me check our school records and handbook for that...",
+                        "tech_screener": "Let me pull up our technical reference on that...",
+                    },
                 }
                 filler = (
                     fallback_fillers.get(fn_name, {}).get(persona)
@@ -465,6 +475,7 @@ def create_agent(
         BookAppointmentActionConfig(),
         CancelAppointmentActionConfig(),
         GetCompanyInfoActionConfig(),
+        QueryKnowledgeBaseActionConfig(),
     ]
     action_factory = CustomActionFactory(actions=actions)
 
