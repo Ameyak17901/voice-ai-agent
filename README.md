@@ -106,7 +106,7 @@ DEEPGRAM_API_KEY=your_deepgram_api_key
 
 # LLM (Google Gemini or OpenAI)
 GEMINI_API_KEY=your_gemini_api_key
-OPENAI_MODEL_NAME=gemini-1.5-flash
+OPENAI_MODEL_NAME=gemini-3.5-flash
 
 # TTS (ElevenLabs, Cartesia, or Edge-TTS)
 TTS_PROVIDER=eleven_labs

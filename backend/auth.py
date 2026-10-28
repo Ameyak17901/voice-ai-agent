@@ -8,6 +8,7 @@ import hashlib
 import secrets
 import uuid
 import datetime
+from datetime import timezone as _tz
 from typing import Optional, Dict, Any, Tuple
 
 import jwt
@@ -16,8 +17,19 @@ from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
 
 # Configuration from environment with secure production defaults
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "voice-copilot-dev-secret-key-change-in-production-1234567890")
+_DEFAULT_JWT_SECRET = "voice-copilot-dev-secret-key-change-in-production-1234567890"
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", _DEFAULT_JWT_SECRET)
 JWT_ALGORITHM = "HS256"
+
+# CRIT-1: Guard against insecure default secret in non-debug / production environments.
+# This prevents silent token forgery if the environment variable is accidentally omitted.
+if JWT_SECRET_KEY == _DEFAULT_JWT_SECRET and os.getenv("DEBUG", "true").lower() not in ("true", "1", "yes"):
+    raise RuntimeError(
+        "FATAL: JWT_SECRET_KEY environment variable is not set. "
+        "Generate a cryptographically random secret: "
+        "python -c \"import secrets; print(secrets.token_hex(64))\" "
+        "and set it before starting the server in production."
+    )
 
 # Senior Engineering Architecture:
 # Access tokens are short-lived (15 minutes) to minimize exposure windows if intercepted.
@@ -69,13 +81,13 @@ def create_access_token(
     """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.datetime.utcnow() + expires_delta
+        expire = datetime.datetime.now(_tz.utc) + expires_delta
     else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.datetime.now(_tz.utc) + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({
         "exp": expire,
-        "iat": datetime.datetime.utcnow(),
+        "iat": datetime.datetime.now(_tz.utc),
         "jti": str(uuid.uuid4()),
         "type": "access",
     })
@@ -132,7 +144,7 @@ def issue_token_pair(
     raw_refresh_token = secrets.token_urlsafe(48)
     token_hash = hash_token_string(raw_refresh_token)
     fam_id = family_id or str(uuid.uuid4())
-    expires_at = datetime.datetime.utcnow() + datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.datetime.now(_tz.utc) + datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
 
     # 3. Persist refresh token in database
     db_repository.store_refresh_token(
@@ -198,9 +210,12 @@ def rotate_refresh_token(raw_refresh_token: str) -> Tuple[str, str, Dict[str, An
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check for Expiration
-    expires_at_dt = datetime.datetime.fromisoformat(rt_record["expires_at"])
-    if datetime.datetime.utcnow() > expires_at_dt:
+    # Check for Expiration (MED-4: ensure timezone-aware comparison)
+    raw_exp = rt_record["expires_at"]
+    expires_at_dt = datetime.datetime.fromisoformat(raw_exp)
+    if expires_at_dt.tzinfo is None:
+        expires_at_dt = expires_at_dt.replace(tzinfo=_tz.utc)
+    if datetime.datetime.now(_tz.utc) > expires_at_dt:
         logger.info(f"Refresh token expired for user_id={user_id}.")
         db_repository.revoke_refresh_token(token_hash)
         raise HTTPException(

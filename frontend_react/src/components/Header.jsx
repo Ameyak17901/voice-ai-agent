@@ -8,6 +8,7 @@ export default function Header({
   isHearingUser,
   onOpenAuth,
   onOpenHistory,
+  onOpenKnowledge,
   onOpenSettings,
 }) {
   const { user, isAuthenticated, logout } = useAuth();
@@ -71,6 +72,20 @@ export default function Header({
           <span>History</span>
         </button>
 
+        {/* Knowledge Base (RAG) Button */}
+        <button
+          type="button"
+          className="btn-header-secondary"
+          onClick={onOpenKnowledge}
+          title="Knowledge Base & RAG Documents"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+          <span>Knowledge</span>
+        </button>
+
         {/* User Auth Section */}
         {isAuthenticated ? (
           <div className="user-profile-menu-container">
@@ -120,6 +135,20 @@ export default function Header({
                     <polyline points="12 6 12 12 16 14"></polyline>
                   </svg>
                   Call History
+                </button>
+                <button
+                  type="button"
+                  className="dropdown-item"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    if (onOpenKnowledge) onOpenKnowledge();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+                  </svg>
+                  Knowledge Base (RAG)
                 </button>
                 <div className="dropdown-divider"></div>
                 <button

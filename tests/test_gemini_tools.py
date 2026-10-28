@@ -61,7 +61,7 @@ def test_gemini_parameter_translation():
     gemini_config = ChatGPTAgentConfig(
         initial_message=BaseMessage(text="Hello"),
         prompt_preamble="You are an assistant.",
-        model_name="gemini-1.5-flash",
+        model_name="gemini-3.5-flash",
         openai_api_key="dummy_gemini_key",
         base_url_override="https://generativelanguage.googleapis.com/v1beta/openai/",
         actions=actions,
@@ -136,3 +136,28 @@ def test_agent_factory_creation_with_tools():
     params = agent.get_chat_parameters()
     assert "functions" not in params
     assert "tools" in params
+
+def test_gemini_35_model_preservation():
+    """Verify create_agent preserves 'gemini-3.5-flash' without hostile interceptor replacement."""
+    user_settings = {
+        "gemini_api_key": "dummy_test_gemini_key",
+        "openai_model_name": "gemini-3.5-flash",
+    }
+    agent = create_agent(persona_key="concierge", user_id=1, user_settings=user_settings)
+    assert isinstance(agent, ResilientChatGPTAgent)
+    assert agent.agent_config.model_name == "gemini-3.5-flash", (
+        f"Expected 'gemini-3.5-flash', got '{agent.agent_config.model_name}'"
+    )
+
+
+def test_gemini_legacy_model_auto_upgrade():
+    """Verify legacy 'gemini-1.5-flash' is auto-upgraded to active 'gemini-3.5-flash'."""
+    user_settings = {
+        "gemini_api_key": "dummy_test_gemini_key",
+        "openai_model_name": "gemini-1.5-flash",
+    }
+    agent = create_agent(persona_key="concierge", user_id=1, user_settings=user_settings)
+    assert isinstance(agent, ResilientChatGPTAgent)
+    assert agent.agent_config.model_name == "gemini-3.5-flash", (
+        f"Expected auto-upgrade to 'gemini-3.5-flash', got '{agent.agent_config.model_name}'"
+    )

@@ -99,7 +99,7 @@ class BookAppointmentParams(BaseModel):
 
 class BookAppointmentResponse(BaseModel):
     status: str
-    booking_id: str
+    booking_id: Optional[str] = None  # LOW-5: None on conflict; avoids fake fallback IDs
     summary: str
 
 
@@ -247,7 +247,7 @@ class GetCompanyInfoAction(
         super().__init__(
             action_config=action_config,
             quiet=False,
-            should_respond="never",
+            should_respond="always",  # HIGH-4: ensures acoustic latency masking parity
             is_interruptible=True,
         )
 

@@ -181,7 +181,13 @@ def normalize_time(time_str: str) -> str:
 
 
 class _ScheduledAppointmentsProxy(list):
-    """Backwards-compatible list interface that reads live from DBRepository."""
+    """
+    Backwards-compatible list interface that reads live from DBRepository.
+
+    MED-2 (DEPRECATED): This proxy causes N+1 DB queries (separate SELECT on
+    __len__ and __iter__). New code must call db_repository.list_appointments()
+    directly. Slated for removal in v1.1.
+    """
     def __iter__(self):
         return iter(db_repository.list_appointments())
 

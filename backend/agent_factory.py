@@ -43,6 +43,7 @@ from backend.actions.appointment_actions import (
     CancelAppointmentActionConfig,
     GetCompanyInfoActionConfig,
 )
+from backend.actions.knowledge_actions import QueryKnowledgeBaseActionConfig
 from backend.actions.factory import CustomActionFactory
 
 
@@ -89,11 +90,14 @@ def get_temporal_grounding_instruction(
 
 ACTION_INSTRUCTIONS = (
     "Tool Capabilities & Latency Masking:\n"
-    "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', and 'get_company_info'.\n"
+    "- You have access to real-time tools: 'check_availability', 'book_appointment', 'cancel_appointment', 'get_company_info', and 'query_knowledge_base'.\n"
     "- Latency Masking Protocol: When calling any tool, ALWAYS include a 'user_message' parameter containing a brief (1 short sentence) verbal pre-roll spoken immediately to the caller while the action executes in the background:\n"
     "  * For 'check_availability': 'Let me check our calendar availability for that date right now...'\n"
     "  * For 'book_appointment': 'Just a moment while I confirm that appointment slot for you...'\n"
     "  * For 'cancel_appointment': 'Looking up that confirmation to cancel it for you now...'\n"
+    "  * For 'query_knowledge_base': 'Let me look that up in our knowledge base for you...'\n"
+    "- When the caller asks questions about company policies, FAQs, procedures, school handbook, clinic rules, pricing, or background details, call 'query_knowledge_base'.\n"
+    "- Acoustic Distillation Rule: When receiving knowledge base context, synthesize it into 1 to 2 spoken sentences. Never read citation brackets, URLs, or markdown bullet points.\n"
     "- When the caller inquires about open times or schedule, call 'check_availability' with the target date (e.g. 'YYYY-MM-DD', 'today', or 'tomorrow').\n"
     "- When the caller wants to schedule/confirm an appointment, call 'book_appointment' with name, date (YYYY-MM-DD), time (HH:MM AM/PM), and service.\n"
     "- When the caller wants to cancel an existing booking, ask for their confirmation ID and call 'cancel_appointment'.\n"
@@ -334,26 +338,17 @@ class ResilientChatGPTAgent(ChatGPTAgent):
         
         if "functions" in parameters:
             raw_functions = parameters.pop("functions")
-            base_url = str(self.agent_config.base_url_override or "").lower()
-            model_name = str(self.agent_config.model_name or "").lower()
+            # LOW-1: Both Gemini and OpenAI endpoints use modern 'tools' schema.
+            # Dead if/else collapsed (both branches were identical).
+            parameters["tools"] = [
+                {"type": "function", "function": fn}
+                for fn in raw_functions
+            ]
+            logger.info(
+                f"[AGENT_TOOLING] Translated {len(raw_functions)} legacy functions to modern OpenAI 'tools' "
+                f"schema for model='{self.agent_config.model_name}'"
+            )
             
-            # If Google Gemini proxy or modern OpenAI model, use standard 'tools' schema
-            is_gemini_endpoint = "generativelanguage.googleapis.com" in base_url or "gemini" in model_name
-            if is_gemini_endpoint:
-                parameters["tools"] = [
-                    {"type": "function", "function": fn}
-                    for fn in raw_functions
-                ]
-                logger.info(
-                    f"[AGENT_TOOLING] Translated {len(raw_functions)} legacy functions to modern OpenAI 'tools' "
-                    f"schema for model='{self.agent_config.model_name}'"
-                )
-            else:
-                parameters["tools"] = [
-                    {"type": "function", "function": fn}
-                    for fn in raw_functions
-                ]
-                
         return parameters
 
     async def generate_response(
@@ -417,6 +412,12 @@ class ResilientChatGPTAgent(ChatGPTAgent):
                         "receptionist": "Checking your appointment details to process the cancellation...",
                         "school_receptionist": "Processing that cancellation on our schedule for you now...",
                     },
+                    "query_knowledge_base": {
+                        "concierge": "Let me look that up in our system knowledge base for you...",
+                        "receptionist": "One moment, let me check our clinic guidelines on that for you...",
+                        "school_receptionist": "Let me check our school records and handbook for that...",
+                        "tech_screener": "Let me pull up our technical reference on that...",
+                    },
                 }
                 filler = (
                     fallback_fillers.get(fn_name, {}).get(persona)
@@ -465,6 +466,7 @@ def create_agent(
         BookAppointmentActionConfig(),
         CancelAppointmentActionConfig(),
         GetCompanyInfoActionConfig(),
+        QueryKnowledgeBaseActionConfig(),
     ]
     action_factory = CustomActionFactory(actions=actions)
 
@@ -472,9 +474,11 @@ def create_agent(
     # 1. Check for user-specific or system Gemini API key
     gemini_key = u_settings.get("gemini_api_key") or settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        model_name = u_settings.get("openai_model_name") or settings.openai_model_name or "gemini-1.5-flash"
-        if "gemini-3.5" in model_name:
-            model_name = "gemini-1.5-flash"
+        model_name = u_settings.get("openai_model_name") or settings.openai_model_name or "gemini-3.5-flash"
+        # Auto-upgrade any legacy references to deprecated gemini-1.5-flash
+        if model_name in ("gemini-1.5-flash", "gemini-1.5"):
+            logger.info(f"Upgrading deprecated model '{model_name}' -> 'gemini-3.5-flash' for persona '{persona}'")
+            model_name = "gemini-3.5-flash"
         logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}) with Google {model_name} for persona '{persona}'...")
         config = ChatGPTAgentConfig(
             initial_message=BaseMessage(text=initial_text),
@@ -500,6 +504,9 @@ def create_agent(
         base_url = u_settings.get("openai_base_url") or settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
         if "gemini" in model_name.lower() and not base_url:
             base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        if model_name in ("gemini-1.5-flash", "gemini-1.5"):
+            logger.info(f"Upgrading deprecated model '{model_name}' -> 'gemini-3.5-flash' for persona '{persona}'")
+            model_name = "gemini-3.5-flash"
 
         logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}, Model: {model_name}) for persona '{persona}'...")
         config = ChatGPTAgentConfig(
