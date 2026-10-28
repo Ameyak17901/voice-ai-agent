@@ -1,5 +1,7 @@
 import datetime
 import json
+from datetime import timezone as _tz
+import uuid
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -38,7 +40,7 @@ class DBRepository:
                 username=clean_username,
                 hashed_password=hash_password(plain_password),
                 is_active=True,
-                created_at=datetime.datetime.utcnow(),
+                created_at=datetime.datetime.now(_tz.utc),
             )
             db.add(user)
             db.commit()
@@ -47,8 +49,8 @@ class DBRepository:
             # Initialize empty user settings
             settings = UserSettings(
                 user_id=user.id,
-                created_at=datetime.datetime.utcnow(),
-                updated_at=datetime.datetime.utcnow(),
+                created_at=datetime.datetime.now(_tz.utc),
+                updated_at=datetime.datetime.now(_tz.utc),
             )
             db.add(settings)
             db.commit()
@@ -148,7 +150,7 @@ class DBRepository:
                 if field in kwargs and kwargs[field] is not None:
                     setattr(s, field, kwargs[field])
 
-            s.updated_at = datetime.datetime.utcnow()
+            s.updated_at = datetime.datetime.now(_tz.utc)
             db.commit()
             db.refresh(s)
             return s.to_dict()
@@ -174,7 +176,7 @@ class DBRepository:
                 user_id=user_id,
                 persona=persona,
                 status="active",
-                start_time=datetime.datetime.utcnow(),
+                start_time=datetime.datetime.now(_tz.utc),
             )
             db.add(session)
             db.commit()
@@ -194,7 +196,7 @@ class DBRepository:
             session = db.query(CallSession).filter(CallSession.conversation_id == conversation_id).first()
             if not session:
                 return None
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(_tz.utc)
             session.end_time = now
             session.status = status
             if session.start_time:
@@ -227,7 +229,7 @@ class DBRepository:
                 sender=sender,
                 text=text.strip(),
                 latency_ms=latency_ms,
-                timestamp=datetime.datetime.utcnow(),
+                timestamp=datetime.datetime.now(_tz.utc),
             )
             db.add(item)
             db.commit()
@@ -270,8 +272,8 @@ class DBRepository:
         user_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         with SessionLocal() as db:
-            count = db.query(Appointment).count()
-            booking_id = f"APPT-{count + 101}"
+            # CRIT-2: UUID-based ID avoids COUNT(*)+INSERT race and prevents enumeration attacks.
+            booking_id = f"APPT-{uuid.uuid4().hex[:8].upper()}"
 
             session_id = None
             resolved_user_id = user_id
@@ -292,7 +294,7 @@ class DBRepository:
                 time=time,
                 service=service or "General Consultation",
                 status="confirmed",
-                created_at=datetime.datetime.utcnow(),
+                created_at=datetime.datetime.now(_tz.utc),
             )
             db.add(appt)
             db.commit()
@@ -376,12 +378,12 @@ class DBRepository:
                     initial_message=persona_data["initial_message"],
                     voice_id=persona_data.get("voice_id", "cgSgspJ2msm6clMCkdW9"),
                     voice_name=persona_data.get("voice_name", "Jessica"),
-                    model_name=persona_data.get("model_name", "gemini-1.5-flash"),
+                    model_name=persona_data.get("model_name", "gemini-3.5-flash"),
                     temperature=float(persona_data.get("temperature", 0.7)),
                     idle_nudge_timeout=float(persona_data.get("idle_nudge_timeout", 12.0)),
                     idle_messages_json=idle_msgs_json,
                     idle_goodbye_message=persona_data.get("idle_goodbye_message", "Goodbye!"),
-                    created_at=datetime.datetime.utcnow(),
+                    created_at=datetime.datetime.now(_tz.utc),
                 )
                 db.add(p_obj)
 

@@ -11,7 +11,7 @@ load_dotenv()
 class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8000
-    debug: bool = True
+    debug: bool = False  # MED-3: Default False; opt-in via DEBUG=true env var
 
     # STT Settings
     deepgram_api_key: Optional[str] = None

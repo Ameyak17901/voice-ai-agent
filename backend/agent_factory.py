@@ -338,26 +338,17 @@ class ResilientChatGPTAgent(ChatGPTAgent):
         
         if "functions" in parameters:
             raw_functions = parameters.pop("functions")
-            base_url = str(self.agent_config.base_url_override or "").lower()
-            model_name = str(self.agent_config.model_name or "").lower()
+            # LOW-1: Both Gemini and OpenAI endpoints use modern 'tools' schema.
+            # Dead if/else collapsed (both branches were identical).
+            parameters["tools"] = [
+                {"type": "function", "function": fn}
+                for fn in raw_functions
+            ]
+            logger.info(
+                f"[AGENT_TOOLING] Translated {len(raw_functions)} legacy functions to modern OpenAI 'tools' "
+                f"schema for model='{self.agent_config.model_name}'"
+            )
             
-            # If Google Gemini proxy or modern OpenAI model, use standard 'tools' schema
-            is_gemini_endpoint = "generativelanguage.googleapis.com" in base_url or "gemini" in model_name
-            if is_gemini_endpoint:
-                parameters["tools"] = [
-                    {"type": "function", "function": fn}
-                    for fn in raw_functions
-                ]
-                logger.info(
-                    f"[AGENT_TOOLING] Translated {len(raw_functions)} legacy functions to modern OpenAI 'tools' "
-                    f"schema for model='{self.agent_config.model_name}'"
-                )
-            else:
-                parameters["tools"] = [
-                    {"type": "function", "function": fn}
-                    for fn in raw_functions
-                ]
-                
         return parameters
 
     async def generate_response(
@@ -483,9 +474,11 @@ def create_agent(
     # 1. Check for user-specific or system Gemini API key
     gemini_key = u_settings.get("gemini_api_key") or settings.gemini_api_key or os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        model_name = u_settings.get("openai_model_name") or settings.openai_model_name or "gemini-1.5-flash"
-        if "gemini-3.5" in model_name:
-            model_name = "gemini-1.5-flash"
+        model_name = u_settings.get("openai_model_name") or settings.openai_model_name or "gemini-3.5-flash"
+        # Auto-upgrade any legacy references to deprecated gemini-1.5-flash
+        if model_name in ("gemini-1.5-flash", "gemini-1.5"):
+            logger.info(f"Upgrading deprecated model '{model_name}' -> 'gemini-3.5-flash' for persona '{persona}'")
+            model_name = "gemini-3.5-flash"
         logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}) with Google {model_name} for persona '{persona}'...")
         config = ChatGPTAgentConfig(
             initial_message=BaseMessage(text=initial_text),
@@ -511,6 +504,9 @@ def create_agent(
         base_url = u_settings.get("openai_base_url") or settings.openai_base_url or os.getenv("OPENAI_BASE_URL")
         if "gemini" in model_name.lower() and not base_url:
             base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        if model_name in ("gemini-1.5-flash", "gemini-1.5"):
+            logger.info(f"Upgrading deprecated model '{model_name}' -> 'gemini-3.5-flash' for persona '{persona}'")
+            model_name = "gemini-3.5-flash"
 
         logger.info(f"Initializing ResilientChatGPTAgent (User: {user_id}, Model: {model_name}) for persona '{persona}'...")
         config = ChatGPTAgentConfig(

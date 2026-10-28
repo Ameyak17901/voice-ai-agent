@@ -81,7 +81,12 @@ class GeminiEmbeddingService:
         else:
             model_path = model_name
 
-        native_url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:batchEmbedContents?key={self.api_key}"
+        # MED-6: Use x-goog-api-key header to prevent key from appearing in server logs.
+        native_url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:batchEmbedContents"
+        embedding_headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json",
+        }
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for i in range(0, len(cleaned_texts), batch_size):
@@ -96,7 +101,7 @@ class GeminiEmbeddingService:
                     ]
                 }
                 try:
-                    response = await client.post(native_url, json=native_payload)
+                    response = await client.post(native_url, json=native_payload, headers=embedding_headers)
                     if response.status_code == 200:
                         data = response.json()
                         embeds = [item.get("values", []) for item in data.get("embeddings", [])]

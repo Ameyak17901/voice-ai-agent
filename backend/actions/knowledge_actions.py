@@ -65,9 +65,15 @@ class QueryKnowledgeBaseAction(
         query_text = action_input.params.query
         logger.info(f"[VOICE_ACTION: QUERY_KNOWLEDGE_BASE] Executing search for: '{query_text}'")
 
+        # HIGH-3: Scope search to the requesting tenant to prevent cross-tenant knowledge leakage.
+        user_id: Optional[int] = getattr(action_input.action_config, "user_id", None)
+        persona_id: Optional[str] = getattr(action_input.action_config, "persona_id", None)
+
         try:
             search_result = await rag_service.query_knowledge(
                 query=query_text,
+                user_id=user_id,
+                persona_id=persona_id,
             )
             matches = search_result.get("matches", [])
             match_count = len(matches)

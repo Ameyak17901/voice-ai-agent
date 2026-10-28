@@ -77,6 +77,15 @@ def apply_schema_migrations():
             conn.commit()
             logger.info("[DB_MIGRATION] Successfully added 'user_id' to 'appointments'.")
 
+        # 3. Migrate legacy deprecated models 'gemini-1.5-flash' to 'gemini-3.5-flash'
+        cursor.execute("PRAGMA table_info(user_settings)")
+        if cursor.fetchall():
+            cursor.execute("UPDATE user_settings SET openai_model_name = 'gemini-3.5-flash' WHERE openai_model_name IN ('gemini-1.5-flash', 'gemini-1.5')")
+        cursor.execute("PRAGMA table_info(custom_personas)")
+        if cursor.fetchall():
+            cursor.execute("UPDATE custom_personas SET model_name = 'gemini-3.5-flash' WHERE model_name IN ('gemini-1.5-flash', 'gemini-1.5')")
+        conn.commit()
+
         conn.close()
     except Exception as exc:
         logger.error(f"[DB_MIGRATION] Failed during automatic schema migration: {exc}", exc_info=True)

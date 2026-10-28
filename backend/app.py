@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depe
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List, Dict, Any, Union
 from loguru import logger
 
@@ -286,9 +286,29 @@ app.include_router(conversation_router.get_router())
 
 # Request & Response Models
 class RegisterRequest(BaseModel):
-    email: str
-    username: str
-    password: str
+    email: EmailStr = Field(..., description="Valid email address")
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=64,
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        description="3 to 64 alphanumeric characters, underscores, or hyphens",
+    )
+    password: str = Field(..., min_length=8, max_length=128, description="Minimum 8 characters")
+
+    @field_validator("username")
+    @classmethod
+    def username_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Username cannot be blank")
+        return v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Password cannot be blank or whitespace-only")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -703,7 +723,15 @@ async def upload_document(
     user_id = current_user["id"] if current_user else 0
     filename = file.filename or "uploaded_document"
     doc_title = title or filename
-    content_bytes = await file.read()
+
+    # CRIT-3: Enforce upload size limit to prevent OOM attacks (20 MB max).
+    MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+    content_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File too large. Maximum allowed upload size is 20 MB.",
+        )
 
     lower_name = filename.lower()
     if lower_name.endswith(".pdf"):

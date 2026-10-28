@@ -1,5 +1,6 @@
 import datetime
 import json
+from datetime import timezone as _tz
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from backend.db.database import Base
@@ -13,7 +14,7 @@ class User(Base):
     username = Column(String(64), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     # Relationships
     settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
@@ -49,11 +50,11 @@ class UserSettings(Base):
     eleven_labs_voice_id = Column(String(64), default="EXAVITQu4vr4xnSDxMaL", nullable=False)
     tts_provider = Column(String(32), default="eleven_labs", nullable=False)
     default_persona = Column(String(64), default="concierge", nullable=False)
-    openai_model_name = Column(String(64), default="gemini-1.5-flash", nullable=False)
+    openai_model_name = Column(String(64), default="gemini-3.5-flash", nullable=False)
     openai_base_url = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), onupdate=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     user = relationship("User", back_populates="settings")
 
@@ -85,12 +86,12 @@ class CustomPersona(Base):
     initial_message = Column(Text, nullable=False)
     voice_id = Column(String(64), default="cgSgspJ2msm6clMCkdW9")
     voice_name = Column(String(64), default="Jessica")
-    model_name = Column(String(64), default="gemini-1.5-flash")
+    model_name = Column(String(64), default="gemini-3.5-flash")
     temperature = Column(Float, default=0.7)
     idle_nudge_timeout = Column(Float, default=12.0)
     idle_messages_json = Column(Text, nullable=True)
     idle_goodbye_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     user = relationship("User", back_populates="personas")
 
@@ -129,14 +130,14 @@ class CallSession(Base):
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=True)
     persona = Column(String(64), default="concierge", nullable=False)
     status = Column(String(32), default="active", nullable=False)  # active, completed, disconnected, error
-    start_time = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    start_time = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
     end_time = Column(DateTime, nullable=True)
     duration_seconds = Column(Float, default=0.0)
     summary = Column(Text, nullable=True)
     sentiment = Column(String(32), nullable=True)
     audio_chunks_count = Column(Integer, default=0)
     total_audio_bytes = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     user = relationship("User", back_populates="calls")
     transcripts = relationship("TranscriptItem", back_populates="session", cascade="all, delete-orphan", order_by="TranscriptItem.timestamp")
@@ -169,7 +170,7 @@ class TranscriptItem(Base):
     sender = Column(String(16), nullable=False)  # human, bot, tool, system
     text = Column(Text, nullable=False)
     latency_ms = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     session = relationship("CallSession", back_populates="transcripts")
 
@@ -196,7 +197,7 @@ class Appointment(Base):
     time = Column(String(32), nullable=False)
     service = Column(String(128), default="General Consultation", nullable=False)
     status = Column(String(32), default="confirmed", nullable=False)  # confirmed, cancelled, rescheduled
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     user = relationship("User", back_populates="appointments")
     session = relationship("CallSession", back_populates="appointments")
@@ -227,7 +228,7 @@ class RefreshToken(Base):
     family_id = Column(String(64), index=True, nullable=False)  # Groups rotated tokens
     is_revoked = Column(Boolean, default=False, nullable=False)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(_tz.utc), nullable=False)
 
     user = relationship("User", back_populates="refresh_tokens")
 
