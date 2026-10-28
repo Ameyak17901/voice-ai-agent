@@ -54,6 +54,11 @@ jobs:
       - name: Install Project Root
         run: poetry install --no-interaction
 
+      - name: Verify Production Requirements Sync
+        run: |
+          grep -q "chromadb" requirements.txt || (echo "ERROR: requirements.txt is missing chromadb" && exit 1)
+          grep -q "pypdf" requirements.txt || (echo "ERROR: requirements.txt is missing pypdf" && exit 1)
+
       - name: Verify Backend Server Initialization
         run: poetry run python run.py --test
 

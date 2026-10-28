@@ -5,8 +5,17 @@ and cosine similarity matching.
 """
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+try:
+    import chromadb
+    from chromadb.config import Settings as ChromaSettings
+    _CHROMA_AVAILABLE = True
+    _CHROMA_ERROR = None
+except ImportError as _err:
+    chromadb = None
+    ChromaSettings = None
+    _CHROMA_AVAILABLE = False
+    _CHROMA_ERROR = str(_err)
+
 from loguru import logger
 from backend.config import settings
 
@@ -24,15 +33,32 @@ class ChromaVectorStore:
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.collection_name = collection_name
 
-        self._client = chromadb.PersistentClient(
-            path=str(self.persist_dir),
-            settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
-        )
-        self._collection = self._client.get_or_create_collection(
-            name=self.collection_name,
-            metadata={"hnsw:space": "cosine"},
-        )
-        logger.info(f"[CHROMA] Initialized PersistentClient at '{self.persist_dir}', collection: '{collection_name}'")
+        self.is_available = _CHROMA_AVAILABLE
+        self._client = None
+        self._collection = None
+
+        if not _CHROMA_AVAILABLE:
+            logger.warning(
+                f"[CHROMA] chromadb is not installed or unavailable: {_CHROMA_ERROR}. "
+                "RAG vector storage will operate in graceful fallback mode without crashing server."
+            )
+            return
+
+        try:
+            self._client = chromadb.PersistentClient(
+                path=str(self.persist_dir),
+                settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
+            )
+            self._collection = self._client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info(f"[CHROMA] Initialized PersistentClient at '{self.persist_dir}', collection: '{collection_name}'")
+        except Exception as exc:
+            logger.error(f"[CHROMA] Failed to initialize ChromaDB PersistentClient: {exc}")
+            self.is_available = False
+            self._client = None
+            self._collection = None
 
     def _build_where_filter(
         self,
@@ -66,6 +92,9 @@ class ChromaVectorStore:
         Inserts or updates document chunks in ChromaDB.
         Sanitizes metadatas to ensure only primitive types (str, int, float, bool) are stored.
         """
+        if not getattr(self, "is_available", True) or self._collection is None:
+            logger.warning("[CHROMA] Vector store unavailable. Skipping chunk addition.")
+            return 0
         if not ids:
             return 0
 
@@ -102,6 +131,10 @@ class ChromaVectorStore:
         Performs semantic similarity search with tenant filtering and distance thresholding.
         Returns ordered list of matches with content, metadata, and score.
         """
+        if not getattr(self, "is_available", True) or self._collection is None:
+            logger.warning("[CHROMA] Vector store unavailable. Skipping query.")
+            return []
+
         where_filter = self._build_where_filter(user_id=user_id, persona_id=persona_id)
 
         count = self._collection.count()
@@ -148,6 +181,10 @@ class ChromaVectorStore:
 
     def delete_document(self, document_id: str, user_id: Optional[int] = None) -> int:
         """Deletes all chunks associated with a specific document ID."""
+        if not getattr(self, "is_available", True) or self._collection is None:
+            logger.warning("[CHROMA] Vector store unavailable. Skipping document deletion.")
+            return 0
+
         where_filter = self._build_where_filter(user_id=user_id, document_id=document_id)
         if not where_filter:
             return 0
@@ -166,6 +203,10 @@ class ChromaVectorStore:
         persona_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Lists ingested documents and their chunk counts filtered by user and persona."""
+        if not getattr(self, "is_available", True) or self._collection is None:
+            logger.warning("[CHROMA] Vector store unavailable. Skipping list documents.")
+            return []
+
         where_filter = self._build_where_filter(user_id=user_id, persona_id=persona_id)
         get_params = {"include": ["metadatas"]}
         if where_filter:
@@ -196,6 +237,8 @@ class ChromaVectorStore:
 
     def reset_collection(self) -> None:
         """Empties collection (used for test isolation)."""
+        if not getattr(self, "is_available", True) or self._client is None:
+            return
         self._client.delete_collection(self.collection_name)
         self._collection = self._client.get_or_create_collection(
             name=self.collection_name,
