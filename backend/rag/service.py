@@ -139,6 +139,17 @@ class RAGService:
         # Generate embeddings via Gemini / mock fallback
         embeddings = await self.embedding_service.get_embeddings(texts)
 
+        # Check if vector store engine is available
+        if hasattr(self.vector_store, "is_available") and not self.vector_store.is_available:
+            logger.warning("[RAG_SERVICE] Vector store engine is unavailable. Bypassing storage.")
+            return {
+                "document_id": document_id,
+                "title": title,
+                "chunks_indexed": 0,
+                "status": "unavailable",
+                "error": "ChromaDB vector store engine is not installed or available.",
+            }
+
         # Upsert into ChromaDB
         indexed_count = self.vector_store.add_chunks(
             ids=ids,
@@ -166,6 +177,16 @@ class RAGService:
         Executes semantic search against ChromaDB using Gemini embedding for query.
         Returns matched chunks filtered by user_id and persona_id.
         """
+        if hasattr(self.vector_store, "is_available") and not self.vector_store.is_available:
+            logger.warning("[RAG_SERVICE] Vector store engine is unavailable for querying.")
+            return {
+                "query": query,
+                "matched_chunks": [],
+                "context": "",
+                "retrieved": False,
+                "error": "ChromaDB vector store engine is not installed or available.",
+            }
+
         k = top_k if top_k is not None else getattr(settings, "rag_max_retrieval_chunks", 3)
         thresh = threshold if threshold is not None else getattr(settings, "rag_similarity_threshold", 0.5)
 

@@ -11,6 +11,7 @@ WORKDIR /app
 # Install native audio C-libraries, compilers, and system tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    python3-dev \
     gcc \
     g++ \
     libasound2-dev \

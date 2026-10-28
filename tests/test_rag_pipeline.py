@@ -321,3 +321,41 @@ async def test_agent_injects_fallback_for_knowledge_query():
         passed_args = json.loads(fn_call.arguments)
         assert "user_message" in passed_args
         assert passed_args["user_message"] == "One moment, let me check our clinic guidelines on that for you..."
+
+
+@pytest.mark.asyncio
+async def test_rag_service_graceful_degradation_when_vector_store_unavailable():
+    """Verify RAG operations gracefully degrade without raising errors if ChromaDB is unavailable."""
+    from backend.rag.vector_store import ChromaVectorStore
+    from backend.rag.service import RAGService
+    from unittest.mock import MagicMock
+
+    mock_store = MagicMock(spec=ChromaVectorStore)
+    mock_store.is_available = False
+    mock_store.add_chunks.return_value = 0
+    mock_store.query.return_value = []
+    mock_store.delete_document.return_value = 0
+    mock_store.list_documents.return_value = []
+
+    degraded_service = RAGService(vector_store=mock_store)
+
+    # 1. Ingest should gracefully return status='unavailable'
+    res = await degraded_service.ingest_raw_text(
+        text="Sample text",
+        title="Sample",
+        user_id=1,
+        persona_id="concierge",
+    )
+    assert res["status"] == "unavailable"
+    assert res["chunks_indexed"] == 0
+    assert "error" in res
+
+    # 2. Query should return retrieved=False
+    query_res = await degraded_service.query_knowledge(
+        query="test query",
+        user_id=1,
+        persona_id="concierge",
+    )
+    assert query_res["retrieved"] is False
+    assert query_res["context"] == ""
+    assert "error" in query_res
